@@ -1,26 +1,80 @@
 ﻿const Joi = require("joi");
 
+const questionSchema = Joi.object({
+  questionText: Joi.string().min(5).max(500).required(),
+
+  type: Joi.string()
+    .valid("MCQ", "TRUE_FALSE")
+    .default("MCQ"),
+
+  options: Joi.when("type", {
+    is: "TRUE_FALSE",
+    then: Joi.array()
+      .items(Joi.string().valid("True", "False"))
+      .length(2)
+      .default(["True", "False"]),
+    otherwise: Joi.array()
+      .items(Joi.string().min(1))
+      .min(2)
+      .max(6)
+      .required()
+  }),
+
+  correctAnswer: Joi.string().required(),
+
+  timeLimit: Joi.number()
+    .valid(15, 30, 60)
+    .default(30),
+
+  difficulty: Joi.string()
+    .valid("easy", "medium", "hard")
+    .default("medium"),
+
+  categories: Joi.array()
+    .items(Joi.string())
+    .min(1)
+    .required()
+
+}).custom((value, helpers) => {
+  if (value.type === "MCQ") {
+    if (!value.options.includes(value.correctAnswer)) {
+      return helpers.error("any.invalid");
+    }
+  }
+  return value;
+}, "Correct answer validation");
+
+
 const createGameSchema = Joi.object({
   settings: Joi.object({
     title: Joi.string().min(3).max(50).required(),
     category: Joi.string().default("General"),
-    timePerQuestion: Joi.number().min(5).max(300).default(15),
+
+    timePerQuestion: Joi.number()
+      .valid(15, 30, 60)
+      .default(30),
+
     allowLateJoin: Joi.boolean().default(false),
-    questionOrder: Joi.string().valid("sequence", "random").default("sequence"),
+
+    questionOrder: Joi.string()
+      .valid("sequence", "random")
+      .default("sequence"),
+
     restrictToWifi: Joi.boolean().default(false),
-    maxPlayers: Joi.number().default(100)
+
+    maxPlayers: Joi.number()
+      .min(1)
+      .max(500)
+      .default(100)
+
   }).required(),
 
-  questions: Joi.array().items(
-    Joi.object({
-      questionText: Joi.string().required(),
-      type: Joi.string().valid("MCQ", "TRUE_FALSE").default("MCQ"),
-      options: Joi.array().items(Joi.string()).min(2).max(6),
-      correctAnswer: Joi.string().required(),
-      timeLimit: Joi.number().optional(),
-      categories: Joi.array().items(Joi.string()).optional()
-    })
-  ).min(1).required()
-});
+  questions: Joi.array()
+    .items(questionSchema)
+    .min(1)
+    .max(200)
+    .required()
+
+}).options({ abortEarly: false });
 
 module.exports = { createGameSchema };

@@ -6,7 +6,7 @@ const questionSchema = new mongoose.Schema({
   categories: [{ type: String, trim: true }],
   difficulty: { 
     type: String, 
-    enum: ["Easy", "Medium", "Hard"], 
+    enum: ["easy", "medium", "hard"], 
     default: "Medium" 
   },
   type: { type: String, enum: ["MCQ", "TRUE_FALSE"], default: "MCQ" },

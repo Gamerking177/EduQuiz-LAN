@@ -28,7 +28,7 @@ app.get("/", (req, res) => {
 app.use("/api", mainRoutes);
 
 // Health Check
-app.get("/health", (req, res) => {
+app.get("/healtz", (req, res) => {
   res.status(200).send("OK");
 });
 
