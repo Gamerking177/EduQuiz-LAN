@@ -24,7 +24,8 @@ exports.seedBCAQuestions = async (req, res) => {
         title: "BCA Final Year Exam",
         category: "BCA",
         totalQuestions: 30,
-        timePerQuestion: 20
+        timePerQuestion: 20,
+        questionOrder: "random"
       }
     });
 

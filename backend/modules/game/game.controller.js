@@ -47,16 +47,29 @@ exports.validateJoin = async (req, res) => {
 };
 
 exports.createHost = async (req, res) => {
+  let newGameId = null; // Track Game ID for rollback
+
   try {
     const { settings, questions } = req.body;
-    const clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
     
-    // Auto-calculate total questions
+    // --- FIX 2: IP CLEANING ---
+    let rawIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+    // ::ffff: hatao aur agar multiple IPs hain to pehla lo
+    if (rawIp.includes("::ffff:")) {
+        rawIp = rawIp.replace("::ffff:", "");
+    }
+    const clientIp = rawIp.split(',')[0].trim();
+
+    // 1. CREATE GAME
     const newGame = await gameService.createGame({
       hostIp: clientIp,
-      settings: { ...settings, totalQuestions: questions.length }
+      settings: { ...settings, totalQuestions: questions ? questions.length : 0 }
     });
+    
+    // Save ID so we can delete it if next steps fail
+    newGameId = newGame._id; 
 
+    // 2. INSERT QUESTIONS
     if (questions && questions.length > 0) {
       const docs = questions.map(q => ({
         gameId: newGame._id,
@@ -65,12 +78,26 @@ exports.createHost = async (req, res) => {
         options: q.type === "TRUE_FALSE" ? ["True", "False"] : q.options,
         correctAnswer: q.correctAnswer,
         categories: q.categories || [],
+        // Enum validation fix: Ensure specific values or default
+        difficulty: q.difficulty, 
         timeLimit: q.timeLimit || 0
       }));
+      
       await questionService.insertManyQuestions(docs);
     }
+
     sendSuccess(res, "Game created", { roomCode: newGame.roomCode, gameId: newGame._id }, 201);
-  } catch (error) { sendError(res, error.message); }
+
+  } catch (error) {
+    // --- FIX 1: ROLLBACK (UNDO) ---
+    // Agar koi bhi error aaya, to jo Game abhi banaya tha use delete kar do
+    if (newGameId) {
+        console.log(`⚠️ Error occurred. Rolling back Game ID: ${newGameId}`);
+        await Game.findByIdAndDelete(newGameId);
+    }
+    
+    sendError(res, error.message);
+  }
 };
 
 exports.getGameByCode = async (req, res) => {
@@ -98,5 +125,29 @@ exports.getLeaderboard = async (req, res) => {
     sendSuccess(res, "Leaderboard fetched", rankedPlayers);
   } catch (error) { 
     sendError(res, error.message); 
+  }
+};
+
+exports.endGame = async (req, res) => {
+  try {
+    const { roomCode } = req.body;
+
+    if (!roomCode) return sendError(res, "Room Code is required");
+
+    // Find and Update
+    const game = await Game.findOneAndUpdate(
+      { roomCode }, 
+      { status: "ended" }, 
+      { new: true } // Return updated doc
+    );
+
+    if (!game) return sendError(res, "Game not found");
+
+    // Optional: Delete questions (Cleanup)
+    await Question.deleteMany({ gameId: game._id });
+
+    sendSuccess(res, "Game ended successfully (Database updated)", game);
+  } catch (error) {
+    sendError(res, error.message);
   }
 };

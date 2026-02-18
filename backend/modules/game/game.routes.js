@@ -9,5 +9,6 @@ router.post("/create", validate(createGameSchema), controller.createHost);
 router.post("/join", controller.validateJoin); // <-- NEW ROUTE
 router.get("/:roomCode", controller.getGameByCode);
 router.get("/:gameId/leaderboard", controller.getLeaderboard);
+router.post("/end", controller.endGame)
 
 module.exports = router;

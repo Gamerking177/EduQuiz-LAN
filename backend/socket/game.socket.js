@@ -6,23 +6,54 @@ const activeGames = {};
 
 module.exports = (io, socket) => {
   
-  // 1. JOIN ROOM
+// 1. JOIN ROOM (Crash-Proof Version 🛡️)
   socket.on("join_room", async ({ name, roomCode, role }) => {
     try {
       const game = await Game.findOne({ roomCode });
       if (!game) return socket.emit("error_msg", { message: "Room not found" });
 
+      // --- 🕵️‍♂️ IP CLEANING ---
+      let clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+      if (clientIp && clientIp.indexOf(',') > -1) clientIp = clientIp.split(',')[0].trim();
+      if (clientIp === "::1") clientIp = "127.0.0.1";
+      if (clientIp.startsWith("::ffff:")) clientIp = clientIp.replace("::ffff:", "");
+
+      // 🛠️ FIX: Agar DB me allowedIps nahi hai to empty array bana do
+      if (!game.allowedIps) {
+          game.allowedIps = []; 
+      }
+
+      // --- HOST LOGIC ---
       if (role === "host") {
         game.hostSocketId = socket.id;
+        
+        // Agar IP list me nahi hai, to add karo
+        if (!game.allowedIps.includes(clientIp)) {
+            game.allowedIps.push(clientIp);
+        }
+        
         await game.save();
         socket.join(roomCode);
+        console.log(`🔒 Host Joined. Allowed IPs: ${game.allowedIps}`);
         
-        // 🔥 NEW: Send initial leaderboard to Host
         sendLiveLeaderboard(io, roomCode, game._id);
         return;
       }
       
-      // Prevent duplicates or handle reconnects
+      // --- PLAYER LOGIC ---
+      // 🛠️ FIX: Safe Check using (game.allowedIps || [])
+      const allowedList = game.allowedIps || [];
+      const isAllowed = allowedList.includes(clientIp);
+
+      // Agar List empty nahi hai (matlab Security ON hai) aur IP match nahi hua
+      if (allowedList.length > 0 && !isAllowed) {
+          console.log(`🚫 Blocked: ${name} (${clientIp}). Allowed: ${allowedList}`);
+          return socket.emit("error_msg", { 
+              message: "⚠️ Security: You are not on the Host's Network!" 
+          });
+      }
+
+      // ... baaki same join logic ...
       let player = await Player.findOne({ gameId: game._id, name: name });
       if (!player) {
           player = await Player.create({ name, socketId: socket.id, gameId: game._id });
@@ -32,17 +63,13 @@ module.exports = (io, socket) => {
       }
 
       socket.join(roomCode);
-      
-      // Notify Host
       const count = await Player.countDocuments({ gameId: game._id });
       io.to(roomCode).emit("player_joined", { name, count });
-      
-      // 🔥 NEW: Update Ranks immediately
-      sendLiveLeaderboard(io, roomCode, game._id); 
+      sendLiveLeaderboard(io, roomCode, game._id);
 
     } catch(e) { console.error(e); }
   });
-
+  
   // 2. START GAME
   socket.on("start_game", async ({ roomCode }) => {
     const game = await Game.findOne({ roomCode });
@@ -148,21 +175,50 @@ module.exports = (io, socket) => {
   socket.on("disconnect", async () => {
     console.log(`🔌 Disconnect: ${socket.id}`);
   });
+
+  // 6. CLEAN LOBBY (Host can wipe old players)
+  socket.on("clean_lobby", async ({ roomCode }) => {
+      const game = await Game.findOne({ roomCode });
+      if (game) {
+          // Delete all players for this game
+          await Player.deleteMany({ gameId: game._id });
+          
+          // Refresh Host View (It will be empty now)
+          sendLiveLeaderboard(io, roomCode, game._id);
+      }
+  });
 };
 
-// --- HELPER: Send Ranked List ---
+// --- SMART LEADERBOARD HELPER ---
 async function sendLiveLeaderboard(io, roomCode, gameId, totalQs = 999) {
-    const players = await Player.find({ gameId }).select("name score answeredQuestions");
+    // 1. Get all players from DB
+    const players = await Player.find({ gameId }).select("name score answeredQuestions socketId");
     
-    // Sort High to Low
-    players.sort((a, b) => b.score - a.score);
+    // 2. Get list of CURRENTLY CONNECTED Socket IDs in this room
+    const room = io.sockets.adapter.rooms.get(roomCode);
+    const activeSocketIds = room ? Array.from(room) : [];
 
-    const leaderboardData = players.map((p, index) => ({
+    // 3. FILTER: Keep player ONLY if...
+    //    a) They are currently online (socketId is in room)
+    //    OR
+    //    b) They have FINISHED the quiz (answered all Qs)
+    const validPlayers = players.filter(p => {
+        const isOnline = activeSocketIds.includes(p.socketId);
+        const isFinished = p.answeredQuestions.length >= totalQs;
+        return isOnline || isFinished;
+    });
+
+    // 4. Sort High to Low
+    validPlayers.sort((a, b) => b.score - a.score);
+
+    // 5. Format for Client
+    const leaderboardData = validPlayers.map((p, index) => ({
         rank: index + 1,
         name: p.name,
         score: p.score,
         status: p.answeredQuestions.length >= totalQs ? "🏁 Done" : `Q${p.answeredQuestions.length + 1}`
     }));
 
+    // 6. Send
     io.to(roomCode).emit("update_leaderboard", leaderboardData);
 }

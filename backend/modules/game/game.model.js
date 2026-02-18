@@ -4,8 +4,11 @@ const gameSchema = new mongoose.Schema({
   roomCode: { type: String, required: true, unique: true },
   hostSocketId: { type: String },
   hostIp: { type: String },
+  allowedIp: {
+    type: [String],
+    default: [],
+  },
   status: { type: String, enum: ["waiting", "active", "ended"], default: "waiting" },
-
   settings: {
     title: { type: String, required: true },
     category: { type: String, default: "General" },
