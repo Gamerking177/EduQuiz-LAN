@@ -1,85 +1,59 @@
-import { View, Text, Image } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useEffect } from "react";
-import { useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withDelay,
-  Easing,
-} from "react-native-reanimated";
-import '../global.css'
-
-const AnimatedView = Animated.createAnimatedComponent(View);
-const AnimatedImage = Animated.createAnimatedComponent(Image);
+import React, { useEffect } from 'react';
+import { View, Text, Image, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import AppLogo from '../components/AppLogo'; // Apna custom logo component import karo
+import '../global.css'; // NativeWind ke liye zaroori CSS import
 
 export default function SplashScreen() {
-  const router = useRouter();
+    const router = useRouter();
 
-  const logoScale = useSharedValue(0.8);
-  const logoOpacity = useSharedValue(0);
-  const textOpacity = useSharedValue(0);
-  const textTranslate = useSharedValue(20);
+    useEffect(() => {
+        // 2-3 seconds ka delay taaki user logo dekh sake (Production feel)
+        const timer = setTimeout(() => {
+            // Yahan hum auth check ka logic bhi daal sakte hain baad mein
+            router.replace('/home');
+        }, 3000);
 
-  useEffect(() => {
-    logoScale.value = withTiming(1, { duration: 900, easing: Easing.out(Easing.exp) });
-    logoOpacity.value = withTiming(1, { duration: 900 });
+        return () => clearTimeout(timer);
+    }, []);
 
-    textOpacity.value = withDelay(600, withTiming(1, { duration: 600 }));
-    textTranslate.value = withDelay(600, withTiming(0, { duration: 600 }));
+    return (
+        <SafeAreaView className="flex-1 bg-[#050B18] justify-between items-center py-10">
+            <StatusBar style="light" />
 
-    const timer = setTimeout(() => {
-      router.replace("/home");
-    }, 2600);
+            {/* Center Content: Logo and Title */}
+            <View className="flex-1 justify-center items-center">
+                <Animated.View entering={FadeInDown.duration(1000).springify()}>
+                    {/* SVG Component Use Kar rahe hain */}
+                    <AppLogo size={120} />
+                </Animated.View>
 
-    return () => clearTimeout(timer);
-  }, []);
+                <Animated.View entering={FadeInUp.delay(200).duration(1000)}>
+                    <Text className="text-white text-3xl font-[Manrope-Bold] mt-8 tracking-tight">
+                        EduQuiz LAN
+                    </Text>
+                    <Text className="text-gray-400 text-center text-sm font-[Manrope-Regular] mt-2">
+                        Learn together, anywhere
+                    </Text>
+                </Animated.View>
+            </View>
 
-  const logoStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: logoScale.value }],
-    opacity: logoOpacity.value,
-  }));
+            {/* Bottom Content: Loading & Version */}
+            <View className="items-center w-full px-10">
+                <View className="flex-row items-center mb-8">
+                    <ActivityIndicator size="small" color="#00D1FF" />
+                    <Text className="text-[#00D1FF] font-[Manrope-SemiBold] text-xs ml-3 tracking-[2px] uppercase">
+                        Initializing
+                    </Text>
+                </View>
 
-  const textStyle = useAnimatedStyle(() => ({
-    opacity: textOpacity.value,
-    transform: [{ translateY: textTranslate.value }],
-  }));
-
- return (
-  <View className="flex-1 bg-[#020617]">
-
-    {/* Top glow */}
-    <LinearGradient
-      colors={["#0F172A", "transparent"]}
-      start={{ x: 0.5, y: 0 }}
-      end={{ x: 0.5, y: 0.7 }}
-      style={{ position: "absolute", width: "100%", height: "65%" }}
-    />
-
-    {/* CENTER CONTENT WRAPPER */}
-    <View className="flex-1 justify-center items-center px-6">
-      <Animated.View style={logoStyle} className="items-center">
-        <Image
-          source={require("../assets/icon.png")}
-          style={{ width: 120, height: 120 }}
-          resizeMode="contain"
-        />
-      </Animated.View>
-
-      <Animated.View style={textStyle} className="mt-6 items-center">
-        <Text className="text-white text-spscreen font-manropeSemiBold">
-          EduQuiz LAN
-        </Text>
-      </Animated.View>
-    </View>
-
-    {/* Bottom version text */}
-    <Text className="absolute bottom-10 self-center text-[#475569] text-xs font-manrope">
-      v1.0.0
-    </Text>
-  </View>
-);
-
+                <Text className="text-gray-600 font-[Manrope-Regular] text-xs">
+                    v1.0.0
+                </Text>
+            </View>
+        </SafeAreaView>
+    );
 }

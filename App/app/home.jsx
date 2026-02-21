@@ -1,68 +1,89 @@
-import { View, Text, Pressable } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import "../global.css";
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Plus, Users, ChevronRight, History } from 'lucide-react-native';
+import ActionCard from '../components/ActionCard'; // ActionCard component import
+import * as Network from 'expo-network'; // Network import
+import { useRouter } from 'expo-router';
 
-export default function HomeScreen() {
-    const router = useRouter();
+// --- Main Screen ---
+export default function HomeDashboard() {
+  const [isWifiConnected, setIsWifiConnected] = useState(false);
+  const router = useRouter();
 
-    return (
-        <SafeAreaView className="flex-1 bg-[#020617]">
+  useEffect(() => {
+    const checkNetwork = async () => {
+      const state = await Network.getNetworkStateAsync();
+      // LAN (WiFi) check logic
+      setIsWifiConnected(state.type === Network.NetworkStateType.WIFI && state.isConnected);
+    };
 
-            {/* Top glow */}
-            <LinearGradient
-                colors={["#0F172A", "transparent"]}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 0.6 }}
-                className="absolute top-0 w-full h-[55%]"
-            />
+    checkNetwork();
+    // Optional: Interval set kar sakte ho real-time update ke liye
+    const interval = setInterval(checkNetwork, 5000); 
+    return () => clearInterval(interval);
+  }, []);
 
-            <View className="flex-1 px-6 pt-16">
+  return (
+    <SafeAreaView className="flex-1 bg-[#050B18] px-6">
+      <ScrollView showsVerticalScrollIndicator={false} className="mt-8">
+        
+        {/* Header */}
+        <View className="items-center mb-10">
+          <Text className="text-white text-4xl font-[Manrope-Bold]">EduQuiz LAN</Text>
+          <Text className="text-gray-400 text-center font-[Manrope-Medium] mt-2 px-10">
+            Host or join live quizzes instantly over your local network.
+          </Text>
+        </View>
 
-                {/* Title Section */}
-                <View className="items-center mb-16 ">
-                    <Text className="text-white text-title font-manropeBold">
-                        EduQuiz LAN
-                    </Text>
-                    <Text className="text-subtitle text-[#9CA3AF] font-manrope mt-2">
-                        Play quizzes offline
-                    </Text>
-                </View>
+        {/* Action Cards */}
+        <ActionCard 
+          title="Create Game"
+          desc="Start hosting a new quiz session as the server."
+          icon={Plus}
+          colorClass="bg-indigo-600"
+          delay={200}
+          onPress={() => router.push("/create-quiz")}
+        />
+        
+        <ActionCard 
+          title="Join Game"
+          desc="Enter a code or scan to participate in a live quiz."
+          icon={Users}
+          colorClass="bg-teal-600"
+          delay={400}
+          onPress={() => router.push("/join-game")}
+        />
 
-                {/* Buttons */}
-                <View className="flex-1 justify-center">
-                    <View className="gap-4">
+        {/* Recent Activity Header */}
+        <View className="flex-row justify-between items-center mt-6 mb-4">
+          <Text className="text-gray-400 font-[Manrope-Bold] uppercase tracking-widest text-xs">Recent Activity</Text>
+          <TouchableOpacity><Text className="text-indigo-500 font-[Manrope-Bold] text-xs">View All</Text></TouchableOpacity>
+        </View>
 
-                        {/* Create Game */}
-                        <Pressable
-                            onPress={() => router.push("/create-game")}
-                            className="rounded-xl border border-[#4F46E5] bg-[#0B1220]/60 p-5"
-                        >
-                            <Text className="text-white text-button font-manropeSemiBold">
-                                Create Game
-                            </Text>
-                            <Text className="text-subtitle text-textSecondary font-manrope mt-1">
-                                Host a quiz for others
-                            </Text>
-                        </Pressable>
+        {/* Activity Item */}
+        <View className="bg-[#111827]/50 border border-gray-900 p-4 rounded-2xl flex-row items-center">
+          <View className="bg-gray-800 p-3 rounded-xl mr-4">
+            <History size={20} color="#9CA3AF" />
+          </View>
+          <View>
+            <Text className="text-white font-[Manrope-SemiBold]">Science Trivia 101</Text>
+            <Text className="text-gray-500 text-xs font-[Manrope-Regular]">Yesterday • Score: 8/10</Text>
+          </View>
+        </View>
 
-                        {/* Join Game */}
-                        <Pressable
-                            onPress={() => router.push("/join-game")}
-                            className="rounded-xl border border-[#1E293B] bg-[#0B1220]/40 p-5"
-                        >
-                            <Text className="text-white text-button font-manropeSemiBold">
-                                Join Game
-                            </Text>
-                            <Text className="text-subtitle text-textSecondary font-manrope mt-1">
-                                Enter a room code
-                            </Text>
-                        </Pressable>
-                    </View>
-                </View>
+        {/* LAN Status Badge (Updated Logic) */}
+        <View className="items-center mt-12 mb-6">
+          <View className={`flex-row items-center bg-[#111827] border ${isWifiConnected ? 'border-green-900/50' : 'border-red-900/50'} px-4 py-2 rounded-full`}>
+            <View className={`w-2 h-2 ${isWifiConnected ? 'bg-green-500' : 'bg-red-500'} rounded-full mr-2`} />
+            <Text className={`${isWifiConnected ? 'text-gray-300' : 'text-red-400'} font-[Manrope-Medium] text-xs`}>
+              {isWifiConnected ? 'Connected to LAN' : 'No WiFi Connection'}
+            </Text>
+          </View>
+          {/* Version text removed as requested */}
+        </View>
 
-            </View>
-        </SafeAreaView>
-    );
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
