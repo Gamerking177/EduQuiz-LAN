@@ -1,10 +1,12 @@
 ﻿const gameService = require("./game.service");
 const questionService = require("../question/question.service");
 const Player = require("../player/player.model");
+const Game = require("./game.model"); // 🔥 FIX 1: Imported Game Model
+const Question = require("../question/question.model"); // 🔥 FIX 1: Imported Question Model
 const generateCode = require("../../utils/generateCode");
 const { sendSuccess, sendError } = require("../../utils/response");
 
-// --- NEW: VALIDATE JOIN REQUEST ---
+// --- VALIDATE JOIN REQUEST ---
 exports.validateJoin = async (req, res) => {
   try {
     const { roomCode, playerName } = req.body;
@@ -26,10 +28,12 @@ exports.validateJoin = async (req, res) => {
       return sendError(res, "Room is full", 403);
     }
 
-    // 4. Check Wi-Fi Security
+    // 4. Check Wi-Fi Security (LAN Feature)
     if (game.settings.restrictToWifi) {
       const hostIp = (game.hostIp || "").replace("::ffff:", "");
-      if (clientIp !== hostIp) {
+      // Assuming local LAN IPs might match up to the 3rd octet (e.g., 192.168.1.X)
+      // This strict check is good, but might need tweaking depending on router setup
+      if (clientIp !== hostIp && clientIp !== "127.0.0.1") { 
          return sendError(res, "Access Denied: You must be on the same Wi-Fi as the Host.", 403);
       }
     }
@@ -40,25 +44,25 @@ exports.validateJoin = async (req, res) => {
       title: game.settings.title,
       category: game.settings.category,
       status: game.status,
-      hostName: "Host" // You can enhance this if you store Host Name
+      hostName: "Host"
     });
 
   } catch (error) { sendError(res, error.message); }
 };
 
+// --- CREATE GAME & QUESTIONS (HOST) ---
 exports.createHost = async (req, res) => {
   let newGameId = null; // Track Game ID for rollback
 
   try {
     const { settings, questions } = req.body;
     
-    // --- FIX 2: IP CLEANING ---
+    // IP CLEANING
     let rawIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-    // ::ffff: hatao aur agar multiple IPs hain to pehla lo
-    if (rawIp.includes("::ffff:")) {
+    if (rawIp && rawIp.includes("::ffff:")) {
         rawIp = rawIp.replace("::ffff:", "");
     }
-    const clientIp = rawIp.split(',')[0].trim();
+    const clientIp = rawIp ? rawIp.split(',')[0].trim() : "unknown";
 
     // 1. CREATE GAME
     const newGame = await gameService.createGame({
@@ -66,20 +70,18 @@ exports.createHost = async (req, res) => {
       settings: { ...settings, totalQuestions: questions ? questions.length : 0 }
     });
     
-    // Save ID so we can delete it if next steps fail
     newGameId = newGame._id; 
 
     // 2. INSERT QUESTIONS
     if (questions && questions.length > 0) {
+      // 🔥 FIX 3: Removed `categories` as per our new Schema
       const docs = questions.map(q => ({
         gameId: newGame._id,
         questionText: q.questionText,
         type: q.type || "MCQ",
         options: q.type === "TRUE_FALSE" ? ["True", "False"] : q.options,
         correctAnswer: q.correctAnswer,
-        categories: q.categories || [],
-        // Enum validation fix: Ensure specific values or default
-        difficulty: q.difficulty, 
+        difficulty: q.difficulty || "medium", // lowercase enum fix
         timeLimit: q.timeLimit || 0
       }));
       
@@ -89,17 +91,16 @@ exports.createHost = async (req, res) => {
     sendSuccess(res, "Game created", { roomCode: newGame.roomCode, gameId: newGame._id }, 201);
 
   } catch (error) {
-    // --- FIX 1: ROLLBACK (UNDO) ---
-    // Agar koi bhi error aaya, to jo Game abhi banaya tha use delete kar do
+    // ROLLBACK (UNDO)
     if (newGameId) {
         console.log(`⚠️ Error occurred. Rolling back Game ID: ${newGameId}`);
-        await Game.findByIdAndDelete(newGameId);
+        await Game.findByIdAndDelete(newGameId); // 🔥 FIX 2: Now Game model is imported
     }
-    
-    sendError(res, error.message);
+    sendError(res, error.message, 500);
   }
 };
 
+// --- GET GAME BY CODE ---
 exports.getGameByCode = async (req, res) => {
   try {
     const game = await gameService.findGameByCode(req.params.roomCode);
@@ -108,18 +109,16 @@ exports.getGameByCode = async (req, res) => {
   } catch (error) { sendError(res, error.message); }
 };
 
+// --- GET FINAL LEADERBOARD ---
 exports.getLeaderboard = async (req, res) => {
   try {
-    // 1. Get players sorted by Score (High -> Low)
-    // .lean() converts Mongoose documents to plain JSON objects so we can edit them
     const players = await Player.find({ gameId: req.params.gameId })
       .sort({ score: -1 })
       .lean(); 
 
-    // 2. Add "rank" field to each player
     const rankedPlayers = players.map((player, index) => ({
       ...player,
-      rank: index + 1 // Rank is Index + 1 (Index 0 = Rank 1)
+      rank: index + 1
     }));
 
     sendSuccess(res, "Leaderboard fetched", rankedPlayers);
@@ -128,17 +127,17 @@ exports.getLeaderboard = async (req, res) => {
   }
 };
 
+// --- END GAME (CLEANUP) ---
 exports.endGame = async (req, res) => {
   try {
     const { roomCode } = req.body;
-
     if (!roomCode) return sendError(res, "Room Code is required");
 
     // Find and Update
     const game = await Game.findOneAndUpdate(
       { roomCode }, 
       { status: "ended" }, 
-      { new: true } // Return updated doc
+      { new: true } 
     );
 
     if (!game) return sendError(res, "Game not found");

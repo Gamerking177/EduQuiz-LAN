@@ -3,7 +3,6 @@
 const questionSchema = new mongoose.Schema({
   gameId: { type: mongoose.Schema.Types.ObjectId, ref: "Game", required: true },
   questionText: { type: String, required: true },
-  categories: [{ type: String, trim: true }],
   difficulty: { 
     type: String, 
     enum: ["easy", "medium", "hard"], 

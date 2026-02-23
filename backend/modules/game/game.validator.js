@@ -28,22 +28,18 @@ const questionSchema = Joi.object({
 
   difficulty: Joi.string()
     .valid("easy", "medium", "hard")
-    .default("medium"),
-
-  categories: Joi.array()
-    .items(Joi.string())
-    .min(1)
-    .required()
+    .default("medium")
+    
+  // 🔥 categories block removed to match Mongoose schema!
 
 }).custom((value, helpers) => {
   if (value.type === "MCQ") {
     if (!value.options.includes(value.correctAnswer)) {
-      return helpers.error("any.invalid");
+      return helpers.message("Correct answer must be one of the provided options");
     }
   }
   return value;
-}, "Correct answer validation");
-
+});
 
 const createGameSchema = Joi.object({
   settings: Joi.object({
