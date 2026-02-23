@@ -1,36 +1,55 @@
-import React, { useState } from 'react';
-import { ScrollView, View, Text, Switch, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { ScrollView, View, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, FileText, Settings, ArrowRight, PlusCircle, Image as ImageIcon, X, Wifi, WifiOff } from 'lucide-react-native';
+import { ChevronLeft, FileText, ArrowRight, PlusCircle, Image as ImageIcon, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import CounterInput from '../components/CounterInput';
+
 import QuizInput from '../components/QuizInput';
 import QuestionCard from '../components/QuestionCard';
 import GameSettings from '../components/GameSettings';
+import CategorySelector from '../components/CategorySelector'; // 🟢 1. Naya Import
+
+// 🟢 Naye Imports Backend & Store ke liye
+import { createGame } from '../utils/api';
+import socketService from '../utils/socket';
+import useGameStore from '../store/useGameStore';
 
 export default function CreateQuiz() {
     const router = useRouter();
+
+    // 🟢 Zustand Actions
+    const setRoomCode = useGameStore((state) => state.setRoomCode);
+    const setQuizData = useGameStore((state) => state.setQuizData);
+    const setIsHost = useGameStore((state) => state.setIsHost);
+
+    // --- Loading State for API Call ---
+    const [isLoading, setIsLoading] = useState(false);
 
     // --- Form State Management ---
     const [formData, setFormData] = useState({
         title: '',
         description: '',
+        category: 'Programming', // 🟢 2. Default category add ki
         quizImage: null,
         questionCount: 1,
         maxPlayers: 50,
         timePerQuestion: '30s',
         allowLateJoin: false,
         restrictToWifi: true,
-        questionOrder: 'Sequential', // 🟢 Yeh line zaroori hai
+        questionOrder: 'Sequential',
     });
 
     // --- Questions State ---
     const [questions, setQuestions] = useState([
-        { text: '', options: ['', '', '', ''], correctAnswer: 0, format: 'MCQ', difficulty: 'Medium' }
+        { text: '', options: ['', '', '', ''], correctAnswer: 0, format: 'MCQ', difficulty: 'Easy' }
     ]);
 
-    // Single Image Picker Logic
+    // 🟢 3. useCallback hook taaki CategorySelector faltu re-render na ho
+    const handleCategorySelect = useCallback((selectedCat) => {
+        setFormData((prev) => ({ ...prev, category: selectedCat }));
+    }, []);
+
     const pickQuizImage = async () => {
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -63,9 +82,66 @@ export default function CreateQuiz() {
         }
     };
 
+    // 🟢 API & Socket Logic
+    const handleCreateLobby = async () => {
+        if (!formData.title || questions.length === 0) {
+            alert("Bhai, Title aur questions fill kar lo!");
+            return;
+        }
+
+        try {
+            setIsLoading(true);
+
+            // 🟢 1. Questions Mapping (As per your question schema)
+            const formattedQuestions = questions.map((q) => ({
+                questionText: q.text,
+                type: q.format === "True/False" ? "TRUE_FALSE" : "MCQ",
+                options: q.format === "True/False" ? ["True", "False"] : q.options,
+                correctAnswer: String(q.options[q.correctAnswer]), // String value backend requirement
+                difficulty: q.difficulty.toLowerCase(), // 'easy', 'medium', 'hard'
+                timeLimit: parseInt(formData.timePerQuestion) || 15 // mapped to timeLimit
+            }));
+
+            // 🟢 2. Final API Payload (Matching gameSchema settings object)
+            const apiPayload = {
+                questions: formattedQuestions, // Questions array at root
+                settings: {
+                    title: formData.title,
+                    category: formData.category,
+                    timePerQuestion: parseInt(formData.timePerQuestion) || 15,
+                    allowLateJoin: formData.allowLateJoin,
+                    // Sequential -> sequence, Random -> random (enum fix)
+                    questionOrder: formData.questionOrder === 'Random' ? 'random' : 'sequence',
+                    restrictToWifi: formData.restrictToWifi,
+                    maxPlayers: formData.maxPlayers
+                }
+            };
+
+            console.log("📤 Sending Schema-Perfect Payload:", JSON.stringify(apiPayload, null, 2));
+
+            const response = await createGame(apiPayload);
+
+            if (response.success) {
+                const { roomCode } = response.data;
+                setRoomCode(roomCode);
+                setIsHost(true);
+
+                // Socket logic
+                socketService.connect();
+                socketService.emit("create-room", { roomCode, hostName: "Admin" });
+
+                router.push('/waiting-area');
+            }
+        } catch (error) {
+            console.error("❌ API Error:", error.response?.data || error.message);
+            alert(error.response?.data?.message || "Check console for field mismatch!");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     return (
         <SafeAreaView className="flex-1 bg-[#050B18]">
-            {/* Header */}
             <View className="flex-row items-center px-6 py-4 border-b border-gray-900">
                 <TouchableOpacity onPress={() => router.back()}><ChevronLeft color="white" /></TouchableOpacity>
                 <Text className="flex-1 text-center text-white font-[Manrope-Bold] text-lg">Create Quiz</Text>
@@ -80,7 +156,6 @@ export default function CreateQuiz() {
                         <Text className="text-white font-[Manrope-Bold] ml-2">Quiz Details</Text>
                     </View>
 
-                    {/* Dotted Border Image Picker */}
                     <TouchableOpacity
                         onPress={pickQuizImage}
                         className="border-2 border-dashed border-gray-800 h-44 rounded-3xl items-center justify-center mb-6 bg-[#050B18] overflow-hidden"
@@ -107,15 +182,20 @@ export default function CreateQuiz() {
 
                     <QuizInput label="Quiz Title" placeholder="Enter Quiz Title" value={formData.title} onChangeText={(val) => setFormData({ ...formData, title: val })} />
                     <QuizInput label="Description (Optional)" placeholder="What is this quiz about?" multiline value={formData.description} onChangeText={(val) => setFormData({ ...formData, description: val })} />
+
+                    {/* 🟢 5. Category Selector UI yahan inject kiya */}
+                    <CategorySelector
+                        selectedCategory={formData.category}
+                        onSelectCategory={handleCategorySelect}
+                    />
                 </View>
 
                 {/* Dynamic Questions List */}
                 <View>
                     <Text className="text-white font-[Manrope-Bold] text-xl mb-6">Quiz Questions</Text>
-                    {/* Questions Loop in create-quiz.jsx */}
                     {questions.map((q, idx) => (
                         <QuestionCard
-                            key={`quiz-q-${idx}`} // 🟢 Unique string key
+                            key={`quiz-q-${idx}`}
                             index={idx}
                             questionData={q}
                             updateQuestion={(data) => updateQuestion(idx, data)}
@@ -135,7 +215,6 @@ export default function CreateQuiz() {
                     </View>
                 </TouchableOpacity>
 
-                {/* game settings component */}
                 <GameSettings
                     formData={formData}
                     setFormData={setFormData}
@@ -144,11 +223,21 @@ export default function CreateQuiz() {
                     questionsCount={questions.length}
                 />
 
-                {/* Launch Button */}
-                <TouchableOpacity className="bg-indigo-600 h-16 rounded-3xl flex-row items-center justify-center mb-10 shadow-xl shadow-indigo-900/40">
-                    <Text className="text-white font-[Manrope-Bold] text-lg mr-2">Create Game Lobby</Text>
-                    <ArrowRight size={20} color="white" />
+                <TouchableOpacity
+                    onPress={handleCreateLobby}
+                    disabled={isLoading}
+                    className={`h-16 rounded-3xl flex-row items-center justify-center mb-10 shadow-xl shadow-indigo-900/40 ${isLoading ? 'bg-indigo-400' : 'bg-indigo-600'}`}
+                >
+                    {isLoading ? (
+                        <ActivityIndicator color="white" />
+                    ) : (
+                        <>
+                            <Text className="text-white font-[Manrope-Bold] text-lg mr-2">Create Game Lobby</Text>
+                            <ArrowRight size={20} color="white" />
+                        </>
+                    )}
                 </TouchableOpacity>
+
             </ScrollView>
         </SafeAreaView>
     );

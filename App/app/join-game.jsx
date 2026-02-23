@@ -32,6 +32,8 @@ export default function JoinGame() {
         if (!roomCode || !nickname) {
             alert("Bhai, details toh bharo!");
             return;
+        } else {
+            router.push('/waiting-area'); // Agla step: Waiting Area
         }
         // Socket logic next step mein karenge
     };

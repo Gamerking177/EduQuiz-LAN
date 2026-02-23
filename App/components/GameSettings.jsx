@@ -1,44 +1,36 @@
-import React, { memo } from 'react';
+import React, { memo, useCallback } from 'react';
 import { View, Text, Switch, TouchableOpacity } from 'react-native';
 import { Settings, Wifi, WifiOff } from 'lucide-react-native';
 import CounterInput from './CounterInput';
+import TimeStepper from './TimeStepper';
 
-const GameSettings = ({ formData, setFormData, addQuestion, removeQuestion, questionsCount }) => {
-    
-    // Direct state update without complex logic
-    const updateField = (field, value) => {
+const GameSettings = ({ formData, setFormData }) => {
+
+    // 🟢 updateField stable reference
+    const updateField = useCallback((field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
-    };
+    }, [setFormData]);
 
     return (
-        <View 
+        <View
             className="bg-[#111827]/30 border border-gray-800 p-5 rounded-[32px] mb-10"
-            style={{ borderStyle: 'solid' }} // Stability fix for CssInterop
+            style={{ borderStyle: 'solid' }} 
         >
             <View className="flex-row items-center mb-6">
                 <Settings size={18} color="#6366f1" />
                 <Text className="text-white font-[Manrope-Bold] ml-2">Game Settings</Text>
             </View>
 
-            {/* Question Count */}
-            <CounterInput 
-                label="Question Count" 
-                subLabel="Total questions in session" 
-                value={formData.questionCount} 
-                onIncrement={addQuestion} 
-                onDecrement={() => removeQuestion(questionsCount - 1)} 
+            {/* Max Players (Question count hata diya) */}
+            <CounterInput
+                label="Max Player"
+                subLabel="Total players in session"
+                value={formData.maxPlayers}
+                onIncrement={() => updateField('maxPlayers', formData.maxPlayers + 1)}
+                onDecrement={() => updateField('maxPlayers', Math.max(1, formData.maxPlayers - 1))}
             />
 
-            {/* Max Players */}
-            <CounterInput 
-                label="Max Player" 
-                subLabel="Total players in session" 
-                value={formData.maxPlayers} 
-                onIncrement={() => updateField('maxPlayers', formData.maxPlayers + 1)} 
-                onDecrement={() => updateField('maxPlayers', Math.max(1, formData.maxPlayers - 1))} 
-            />
-
-            {/* 🟢 Question Order - NO MAP, NO DYNAMIC KEYS */}
+            {/* Question Order */}
             <View className="mb-6 px-2">
                 <Text className="text-gray-400 font-[Manrope-Bold] text-[10px] uppercase tracking-widest mb-3">
                     Question Order
@@ -47,28 +39,26 @@ const GameSettings = ({ formData, setFormData, addQuestion, removeQuestion, ques
                     <TouchableOpacity
                         onPress={() => updateField('questionOrder', 'Sequential')}
                         activeOpacity={0.7}
-                        className={`flex-1 py-3 rounded-xl items-center ${
-                            formData.questionOrder === 'Sequential' ? 'bg-indigo-600' : ''
-                        }`}
+                        className={`flex-1 py-3 rounded-xl items-center ${formData.questionOrder === 'Sequential' ? 'bg-indigo-600' : ''}`}
                     >
-                        <Text className={`font-[Manrope-Bold] text-xs ${
-                            formData.questionOrder === 'Sequential' ? 'text-white' : 'text-gray-500'
-                        }`}>Sequential</Text>
+                        <Text className={`font-[Manrope-Bold] text-xs ${formData.questionOrder === 'Sequential' ? 'text-white' : 'text-gray-500'}`}>Sequential</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                         onPress={() => updateField('questionOrder', 'Random')}
                         activeOpacity={0.7}
-                        className={`flex-1 py-3 rounded-xl items-center ${
-                            formData.questionOrder === 'Random' ? 'bg-indigo-600' : ''
-                        }`}
+                        className={`flex-1 py-3 rounded-xl items-center ${formData.questionOrder === 'Random' ? 'bg-indigo-600' : ''}`}
                     >
-                        <Text className={`font-[Manrope-Bold] text-xs ${
-                            formData.questionOrder === 'Random' ? 'text-white' : 'text-gray-500'
-                        }`}>Random</Text>
+                        <Text className={`font-[Manrope-Bold] text-xs ${formData.questionOrder === 'Random' ? 'text-white' : 'text-gray-500'}`}>Random</Text>
                     </TouchableOpacity>
                 </View>
             </View>
+
+            {/* Time Stepper */}
+            <TimeStepper
+                selectedTime={formData.timePerQuestion}
+                onTimeChange={(val) => updateField('timePerQuestion', val)}
+            />
 
             {/* Restrict to WiFi */}
             <View className="flex-row items-center justify-between mb-6 p-4 bg-[#050B18] rounded-2xl border border-gray-800">
@@ -80,10 +70,11 @@ const GameSettings = ({ formData, setFormData, addQuestion, removeQuestion, ques
                         <Text className="text-white font-[Manrope-SemiBold]">Restrict to WiFi</Text>
                     </View>
                 </View>
-                <Switch 
-                    value={formData.restrictToWifi} 
-                    onValueChange={(val) => updateField('restrictToWifi', val)} 
-                    trackColor={{ false: '#1f2937', true: '#6366f1' }} 
+                <Switch
+                    value={formData.restrictToWifi}
+                    onValueChange={(val) => updateField('restrictToWifi', val)}
+                    trackColor={{ false: '#1f2937', true: '#6366f1' }}
+                    thumbColor="#f4f3f4" 
                 />
             </View>
 
@@ -93,14 +84,15 @@ const GameSettings = ({ formData, setFormData, addQuestion, removeQuestion, ques
                     <Text className="text-white font-[Manrope-SemiBold]">Allow Late Join</Text>
                     <Text className="text-gray-500 text-xs">Join after start</Text>
                 </View>
-                <Switch 
-                    value={formData.allowLateJoin} 
-                    onValueChange={(val) => updateField('allowLateJoin', val)} 
-                    trackColor={{ false: '#1f2937', true: '#6366f1' }} 
+                <Switch
+                    value={formData.allowLateJoin}
+                    onValueChange={(val) => updateField('allowLateJoin', val)}
+                    trackColor={{ false: '#1f2937', true: '#6366f1' }}
+                    thumbColor="#f4f3f4"
                 />
             </View>
         </View>
     );
 };
 
-export default memo(GameSettings); // 🟢 Memo added to prevent re-render crash
+export default memo(GameSettings);

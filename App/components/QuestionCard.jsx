@@ -28,9 +28,9 @@ const QuestionCard = ({ index, questionData, updateQuestion, removeQuestion }) =
     };
 
     return (
-        <View 
+        <View
             className="bg-[#111827] border border-gray-800 p-6 rounded-[32px] mb-8"
-            style={{ borderStyle: 'solid' }} 
+            style={{ borderStyle: 'solid' }}
         >
             {/* Header */}
             <View className="flex-row justify-between items-center mb-5">
@@ -66,15 +66,29 @@ const QuestionCard = ({ index, questionData, updateQuestion, removeQuestion }) =
 
             {/* Difficulty Selector */}
             <View className="mb-6">
-                <Text className="text-gray-400 font-[Manrope-Bold] text-[10px] uppercase tracking-widest mb-3">Difficulty</Text>
+                <Text className="text-gray-400 font-[Manrope-Bold] text-[10px] uppercase tracking-widest mb-3">
+                    Difficulty
+                </Text>
                 <View className="flex-row gap-2">
-                    {['Easy', 'Medium', 'Hard'].map((level) => (
+                    {[
+                        { label: 'Easy', value: 'easy' },
+                        { label: 'Medium', value: 'medium' },
+                        { label: 'Hard', value: 'hard' }
+                    ].map((item) => (
                         <TouchableOpacity
-                            key={`diff-${level}`}
-                            onPress={() => updateQuestion({ difficulty: level })}
-                            className={`flex-1 py-2 rounded-xl items-center border ${questionData.difficulty === level ? 'bg-indigo-600 border-indigo-500' : 'bg-[#050B18] border-gray-800'}`}
+                            // 🟢 Unique Key: item.value (easy, medium, hard)
+                            key={`diff-${item.value}`}
+                            onPress={() => updateQuestion({ difficulty: item.value })}
+                            activeOpacity={0.7}
+                            className={`flex-1 py-2 rounded-xl items-center border ${questionData.difficulty === item.value
+                                    ? 'bg-indigo-600 border-indigo-500'
+                                    : 'bg-[#050B18] border-gray-800'
+                                }`}
                         >
-                            <Text className={`font-[Manrope-Bold] text-xs ${questionData.difficulty === level ? 'text-white' : 'text-gray-400'}`}>{level}</Text>
+                            <Text className={`font-[Manrope-Bold] text-xs ${questionData.difficulty === item.value ? 'text-white' : 'text-gray-400'
+                                }`}>
+                                {item.label}
+                            </Text>
                         </TouchableOpacity>
                     ))}
                 </View>
@@ -110,11 +124,11 @@ const QuestionCard = ({ index, questionData, updateQuestion, removeQuestion }) =
                             className="flex-1 text-white p-3 font-[Manrope-Regular]"
                         />
                         {questionData.options.length > 2 && questionData.format === 'MCQ' && (
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 onPress={() => {
                                     const newOpts = questionData.options.filter((_, i) => i !== idx);
                                     updateQuestion({ options: newOpts });
-                                }} 
+                                }}
                                 className="pr-3"
                             >
                                 <X size={16} color="#4B5563" />
