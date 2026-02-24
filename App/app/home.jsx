@@ -2,24 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, Users, ChevronRight, History } from 'lucide-react-native';
-import ActionCard from '../components/ActionCard'; // ActionCard component import
-import * as Network from 'expo-network'; // Network import
+import ActionCard from '../components/ActionCard'; 
+import * as Network from 'expo-network'; 
 import { useRouter } from 'expo-router';
 
-// --- Main Screen ---
+// 🟢 1. Store Import Karo
+import useGameStore from '../store/useGameStore'; 
+
 export default function HomeDashboard() {
   const [isWifiConnected, setIsWifiConnected] = useState(false);
   const router = useRouter();
 
+  // 🟢 2. Store se purana game data nikal lo
+  const roomCode = useGameStore((state) => state.roomCode);
+  const isHost = useGameStore((state) => state.isHost);
+  const clearStore = useGameStore((state) => state.clearStore);
+
   useEffect(() => {
     const checkNetwork = async () => {
       const state = await Network.getNetworkStateAsync();
-      // LAN (WiFi) check logic
       setIsWifiConnected(state.type === Network.NetworkStateType.WIFI && state.isConnected);
     };
 
     checkNetwork();
-    // Optional: Interval set kar sakte ho real-time update ke liye
     const interval = setInterval(checkNetwork, 5000); 
     return () => clearInterval(interval);
   }, []);
@@ -35,6 +40,35 @@ export default function HomeDashboard() {
             Host or join live quizzes instantly over your local network.
           </Text>
         </View>
+
+        {/* 🟢 3. RECONNECT BANNER (Sirf tab dikhega jab app ko purana game yaad hoga) */}
+        {roomCode ? (
+          <View className="bg-indigo-600 p-5 mb-8 rounded-3xl flex-row items-center justify-between border border-indigo-400/50 shadow-lg shadow-indigo-900/50">
+            <View>
+              <Text className="text-white font-[Manrope-Bold] text-lg">Active Game Found!</Text>
+              <Text className="text-indigo-200 font-[Manrope-Medium] text-sm">
+                Room: {roomCode} • You're {isHost ? "Host" : "Player"}
+              </Text>
+            </View>
+            <View className="flex-row items-center">
+              {/* Drop Button */}
+              <TouchableOpacity 
+                onPress={() => clearStore()} 
+                className="bg-red-500/20 px-3 py-2 rounded-xl mr-2 border border-red-500/30"
+              >
+                <Text className="text-red-400 font-[Manrope-Bold] text-xs">Drop</Text>
+              </TouchableOpacity>
+              
+              {/* Resume Button */}
+              <TouchableOpacity 
+                onPress={() => router.push('/waiting-area')} 
+                className="bg-white px-4 py-2 rounded-xl"
+              >
+                <Text className="text-indigo-600 font-[Manrope-Bold] text-xs">Resume</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
 
         {/* Action Cards */}
         <ActionCard 
@@ -72,7 +106,7 @@ export default function HomeDashboard() {
           </View>
         </View>
 
-        {/* LAN Status Badge (Updated Logic) */}
+        {/* LAN Status Badge */}
         <View className="items-center mt-12 mb-6">
           <View className={`flex-row items-center bg-[#111827] border ${isWifiConnected ? 'border-green-900/50' : 'border-red-900/50'} px-4 py-2 rounded-full`}>
             <View className={`w-2 h-2 ${isWifiConnected ? 'bg-green-500' : 'bg-red-500'} rounded-full mr-2`} />
@@ -80,7 +114,6 @@ export default function HomeDashboard() {
               {isWifiConnected ? 'Connected to LAN' : 'No WiFi Connection'}
             </Text>
           </View>
-          {/* Version text removed as requested */}
         </View>
 
       </ScrollView>

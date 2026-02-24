@@ -14,6 +14,7 @@ import CategorySelector from '../components/CategorySelector'; // 🟢 1. Naya I
 import { createGame } from '../utils/api';
 import socketService from '../utils/socket';
 import useGameStore from '../store/useGameStore';
+import CustomAlert from '../components/CustomAlert';
 
 export default function CreateQuiz() {
     const router = useRouter();
@@ -25,6 +26,7 @@ export default function CreateQuiz() {
 
     // --- Loading State for API Call ---
     const [isLoading, setIsLoading] = useState(false);
+    const [alertConfig, setAlertConfig] = useState({ visible: false, title: '', message: '' });
 
     // --- Form State Management ---
     const [formData, setFormData] = useState({
@@ -44,6 +46,10 @@ export default function CreateQuiz() {
     const [questions, setQuestions] = useState([
         { text: '', options: ['', '', '', ''], correctAnswer: 0, format: 'MCQ', difficulty: 'Easy' }
     ]);
+
+    const showAlert = (title, message) => {
+        setAlertConfig({ visible: true, title, message });
+    };
 
     // 🟢 3. useCallback hook taaki CategorySelector faltu re-render na ho
     const handleCategorySelect = useCallback((selectedCat) => {
@@ -85,7 +91,7 @@ export default function CreateQuiz() {
     // 🟢 API & Socket Logic
     const handleCreateLobby = async () => {
         if (!formData.title || questions.length === 0) {
-            alert("Bhai, Title aur questions fill kar lo!");
+            showAlert("Details Missing", "Bhai, Quiz ka title aur kam se kam ek question toh daal!");
             return;
         }
 
@@ -133,8 +139,7 @@ export default function CreateQuiz() {
                 router.push('/waiting-area');
             }
         } catch (error) {
-            console.error("❌ API Error:", error.response?.data || error.message);
-            alert(error.response?.data?.message || "Check console for field mismatch!");
+            showAlert("API Error", error.response?.data?.message || "Check console for field mismatch!");
         } finally {
             setIsLoading(false);
         }
@@ -239,6 +244,13 @@ export default function CreateQuiz() {
                 </TouchableOpacity>
 
             </ScrollView>
+            {/* 🟢 Alert Modal */}
+            <CustomAlert 
+                visible={alertConfig.visible}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
+            />
         </SafeAreaView>
     );
 }

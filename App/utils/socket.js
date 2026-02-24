@@ -1,6 +1,5 @@
 import { io } from "socket.io-client";
 
-// Backend URL from your deployment
 const SOCKET_URL = "https://eduquiz-lan.onrender.com";
 
 class SocketService {
@@ -9,11 +8,13 @@ class SocketService {
   connect() {
     if (!this.socket) {
       console.log("🔌 [Socket] Connecting to server...");
-      
+
       this.socket = io(SOCKET_URL, {
-        transports: ["websocket"],
+        // 🟢 FIX 1: Allow polling first, then upgrade to websocket. 
+        // Render load balancers like this approach much better for mobile.
+        transports: ["polling", "websocket"],
         reconnection: true,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 10, // Thoda badha diya for weak mobile data
         reconnectionDelay: 2000,
       });
 
@@ -22,7 +23,8 @@ class SocketService {
       });
 
       this.socket.on("connect_error", (err) => {
-        console.error("❌ [Socket] Connection Error:", err.message);
+        // 🟢 Detailed error log for debugging
+        console.error("❌ [Socket] Connection Error:", err.message, err.description);
       });
 
       this.socket.on("disconnect", (reason) => {
@@ -32,19 +34,30 @@ class SocketService {
     return this.socket;
   }
 
-  // 🟢 Specific Emitters (Clean approach)
-  
   // Host ke liye room create karna
   createRoom(roomCode, hostName) {
-    this.emit("create-room", { roomCode, hostName });
+    // 🔥 Backend "join_room" expect karta hai underscore ke sath, aur role: "host"
+    this.emit("join_room", { 
+        name: hostName, 
+        roomCode: roomCode, 
+        role: "host" 
+    });
   }
 
   // Player ke liye room join karna
   joinRoom(roomCode, playerName, deviceId) {
-    this.emit("join-room", { roomCode, playerName, deviceId });
+    this.emit("join_room", { 
+        name: playerName, 
+        roomCode: roomCode, 
+        role: "player" 
+    });
   }
 
-  // Generic methods
+  // 🟢 NAYA: Game start karne ke liye (Underscore wala fix)
+  startGame(roomCode) {
+    this.emit("start_game", { roomCode }); 
+  }
+
   emit(event, data) {
     if (this.socket) {
       this.socket.emit(event, data);
