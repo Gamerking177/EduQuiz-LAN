@@ -13,10 +13,15 @@ export default function HomeDashboard() {
   const [isWifiConnected, setIsWifiConnected] = useState(false);
   const router = useRouter();
 
-  // 🟢 2. Store se purana game data nikal lo
   const roomCode = useGameStore((state) => state.roomCode);
   const isHost = useGameStore((state) => state.isHost);
   const clearStore = useGameStore((state) => state.clearStore);
+
+  useEffect(() => {
+    if (roomCode && !isHost) {
+        clearStore();
+    }
+  }, [roomCode, isHost]);
 
   useEffect(() => {
     const checkNetwork = async () => {
@@ -41,29 +46,21 @@ export default function HomeDashboard() {
           </Text>
         </View>
 
-        {/* 🟢 3. RECONNECT BANNER (Sirf tab dikhega jab app ko purana game yaad hoga) */}
-        {roomCode ? (
+        {/* 🟢 FIX: Banner sirf tab dikhega jab roomCode HOGA aur banda HOST HOGA */}
+        {roomCode && isHost ? (
           <View className="bg-indigo-600 p-5 mb-8 rounded-3xl flex-row items-center justify-between border border-indigo-400/50 shadow-lg shadow-indigo-900/50">
             <View>
               <Text className="text-white font-[Manrope-Bold] text-lg">Active Game Found!</Text>
               <Text className="text-indigo-200 font-[Manrope-Medium] text-sm">
-                Room: {roomCode} • You're {isHost ? "Host" : "Player"}
+                Room: {roomCode} • Host
               </Text>
             </View>
             <View className="flex-row items-center">
-              {/* Drop Button */}
-              <TouchableOpacity 
-                onPress={() => clearStore()} 
-                className="bg-red-500/20 px-3 py-2 rounded-xl mr-2 border border-red-500/30"
-              >
+              <TouchableOpacity onPress={() => clearStore()} className="bg-red-500/20 px-3 py-2 rounded-xl mr-2 border border-red-500/30">
                 <Text className="text-red-400 font-[Manrope-Bold] text-xs">Drop</Text>
               </TouchableOpacity>
               
-              {/* Resume Button */}
-              <TouchableOpacity 
-                onPress={() => router.push('/waiting-area')} 
-                className="bg-white px-4 py-2 rounded-xl"
-              >
+              <TouchableOpacity onPress={() => router.push('/waiting-area')} className="bg-white px-4 py-2 rounded-xl">
                 <Text className="text-indigo-600 font-[Manrope-Bold] text-xs">Resume</Text>
               </TouchableOpacity>
             </View>
