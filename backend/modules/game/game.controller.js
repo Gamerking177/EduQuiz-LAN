@@ -1,16 +1,24 @@
 ﻿const gameService = require("./game.service");
 const questionService = require("../question/question.service");
 const Player = require("../player/player.model");
-const Game = require("./game.model"); // 🔥 FIX 1: Imported Game Model
-const Question = require("../question/question.model"); // 🔥 FIX 1: Imported Question Model
-const generateCode = require("../../utils/generateCode");
+const Game = require("./game.model"); 
+const Question = require("../question/question.model"); 
 const { sendSuccess, sendError } = require("../../utils/response");
+
+// 🛠️ HELPER FUNCTION: To extract exact IP from Proxy/Cloud
+const getRealIp = (req) => {
+  let ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
+  if (typeof ip === 'string' && ip.includes(',')) {
+      ip = ip.split(',')[0].trim(); // Proxy list se asli IP nikalo
+  }
+  return ip.replace("::ffff:", "").replace("::1", "127.0.0.1");
+};
 
 // --- VALIDATE JOIN REQUEST ---
 exports.validateJoin = async (req, res) => {
   try {
     const { roomCode, playerName } = req.body;
-    const clientIp = (req.headers["x-forwarded-for"] || req.socket.remoteAddress).replace("::ffff:", "");
+    const clientIp = getRealIp(req);
 
     // 1. Find Game
     const game = await gameService.findGameByCode(roomCode);
@@ -28,17 +36,15 @@ exports.validateJoin = async (req, res) => {
       return sendError(res, "Room is full", 403);
     }
 
-    // 4. Check Wi-Fi Security (LAN Feature)
+    // 4. 🔥 CLOUD LAN SECURITY: Same Wi-Fi Check
     if (game.settings.restrictToWifi) {
-      const hostIp = (game.hostIp || "").replace("::ffff:", "");
-      // Assuming local LAN IPs might match up to the 3rd octet (e.g., 192.168.1.X)
-      // This strict check is good, but might need tweaking depending on router setup
-      if (clientIp !== hostIp && clientIp !== "127.0.0.1") { 
+      if (clientIp !== game.hostIp && clientIp !== "127.0.0.1") { 
+         console.log(`🚫 API Blocked: Player IP ${clientIp} != Host IP ${game.hostIp}`);
          return sendError(res, "Access Denied: You must be on the same Wi-Fi as the Host.", 403);
       }
     }
 
-    // 5. Success! Return Game Details for Frontend Preview
+    // 5. Success
     sendSuccess(res, "Join Allowed", {
       gameId: game._id,
       title: game.settings.title,
@@ -52,21 +58,15 @@ exports.validateJoin = async (req, res) => {
 
 // --- CREATE GAME & QUESTIONS (HOST) ---
 exports.createHost = async (req, res) => {
-  let newGameId = null; // Track Game ID for rollback
+  let newGameId = null; 
 
   try {
     const { settings, questions } = req.body;
-    
-    // IP CLEANING
-    let rawIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-    if (rawIp && rawIp.includes("::ffff:")) {
-        rawIp = rawIp.replace("::ffff:", "");
-    }
-    const clientIp = rawIp ? rawIp.split(',')[0].trim() : "unknown";
+    const clientIp = getRealIp(req);
 
-    // 1. CREATE GAME
+    // 1. CREATE GAME (Saving Host IP)
     const newGame = await gameService.createGame({
-      hostIp: clientIp,
+      hostIp: clientIp, 
       settings: { ...settings, totalQuestions: questions ? questions.length : 0 }
     });
     
@@ -74,14 +74,13 @@ exports.createHost = async (req, res) => {
 
     // 2. INSERT QUESTIONS
     if (questions && questions.length > 0) {
-      // 🔥 FIX 3: Removed `categories` as per our new Schema
       const docs = questions.map(q => ({
         gameId: newGame._id,
         questionText: q.questionText,
         type: q.type || "MCQ",
         options: q.type === "TRUE_FALSE" ? ["True", "False"] : q.options,
         correctAnswer: q.correctAnswer,
-        difficulty: q.difficulty || "medium", // lowercase enum fix
+        difficulty: q.difficulty || "medium", 
         timeLimit: q.timeLimit || 0
       }));
       
@@ -91,11 +90,7 @@ exports.createHost = async (req, res) => {
     sendSuccess(res, "Game created", { roomCode: newGame.roomCode, gameId: newGame._id }, 201);
 
   } catch (error) {
-    // ROLLBACK (UNDO)
-    if (newGameId) {
-        console.log(`⚠️ Error occurred. Rolling back Game ID: ${newGameId}`);
-        await Game.findByIdAndDelete(newGameId); // 🔥 FIX 2: Now Game model is imported
-    }
+    if (newGameId) await Game.findByIdAndDelete(newGameId); 
     sendError(res, error.message, 500);
   }
 };
@@ -117,14 +112,11 @@ exports.getLeaderboard = async (req, res) => {
       .lean(); 
 
     const rankedPlayers = players.map((player, index) => ({
-      ...player,
-      rank: index + 1
+      ...player, rank: index + 1
     }));
 
     sendSuccess(res, "Leaderboard fetched", rankedPlayers);
-  } catch (error) { 
-    sendError(res, error.message); 
-  }
+  } catch (error) { sendError(res, error.message); }
 };
 
 // --- END GAME (CLEANUP) ---
@@ -133,20 +125,12 @@ exports.endGame = async (req, res) => {
     const { roomCode } = req.body;
     if (!roomCode) return sendError(res, "Room Code is required");
 
-    // Find and Update
     const game = await Game.findOneAndUpdate(
-      { roomCode }, 
-      { status: "ended" }, 
-      { new: true } 
+      { roomCode }, { status: "ended" }, { new: true } 
     );
-
     if (!game) return sendError(res, "Game not found");
 
-    // Optional: Delete questions (Cleanup)
     await Question.deleteMany({ gameId: game._id });
-
-    sendSuccess(res, "Game ended successfully (Database updated)", game);
-  } catch (error) {
-    sendError(res, error.message);
-  }
+    sendSuccess(res, "Game ended successfully", game);
+  } catch (error) { sendError(res, error.message); }
 };
