@@ -155,6 +155,42 @@ module.exports = (io, socket) => {
           sendLiveLeaderboard(io, roomCode, game._id);
       }
   });
+
+  // 🟢 NAYA 7: HOST LEAVES LOBBY (DROP GAME)
+  socket.on("host_leaves_lobby", async ({ roomCode }) => {
+      try {
+          console.log(`🔥 [Host] Destroying Room: ${roomCode}`);
+          // Sabhi connected players ko batao ki room band ho gaya
+          io.to(roomCode).emit("lobby_closed", { message: "Host ended the game session." });
+          
+          // Database se Room aur uske saare Players uda do
+          const game = await Game.findOneAndDelete({ roomCode });
+          if (game) {
+              await Player.deleteMany({ gameId: game._id });
+          }
+          delete activeGames[roomCode]; // Active game memory se bhi hata do
+      } catch (error) {
+          console.error("Error in host_leaves_lobby:", error);
+      }
+  });
+
+  // 🟢 NAYA 8: PLAYER CHUP-CHAP LEAVES ROOM (Fixed to use socket.id)
+  socket.on("leave_room", async ({ roomCode, playerName }) => { 
+      try {
+          console.log(`🚶 [Player] ${playerName} left room: ${roomCode}`);
+          const game = await Game.findOne({ roomCode });
+          if (game) {
+              // 🛡️ FIX: Player ko uske unique socket.id se delete karo
+              await Player.findOneAndDelete({ gameId: game._id, socketId: socket.id });
+              
+              // Baaki players ke liye leaderboard update karo
+              sendLiveLeaderboard(io, roomCode, game._id);
+          }
+          socket.leave(roomCode); // Room se bahar nikalo
+      } catch (error) {
+          console.error("Error in leave_room:", error);
+      }
+  });
 };
 
 // --- SMART LEADERBOARD HELPER ---
