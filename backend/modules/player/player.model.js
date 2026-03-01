@@ -9,7 +9,16 @@ const playerSchema = new mongoose.Schema({
     ref: "Game",
     required: true
   },
-  answeredQuestions: [{ type: Number }]
+  answeredQuestions: [{ type: Number }],
+  // 🟢 NAYA LOGIC: Player ki history save karne ke liye
+  answerHistory: [
+    {
+      qIndex: Number,
+      questionText: String,
+      selectedOption: String,
+      isCorrect: Boolean
+    }
+  ]
 }, { timestamps: true });
 
 module.exports = mongoose.model("Player", playerSchema);

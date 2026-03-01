@@ -80,7 +80,6 @@ module.exports = (io, socket) => {
                 const questionData = q._doc || q;
                 return {
                     ...questionData,
-                    // 🔥 TRUE_FALSE ko chhod kar baaki options shuffle karo
                     options: questionData.type === "TRUE_FALSE" 
                              ? questionData.options 
                              : shuffleArray(questionData.options)
@@ -124,7 +123,7 @@ module.exports = (io, socket) => {
     }, 2000); 
   });
 
-  // 3. SUBMIT ANSWER
+  // 3. SUBMIT ANSWER (History Saving 🛡️)
   socket.on("submit_answer", async ({ roomCode, answer }) => {
     const state = activeGames[roomCode];
     if (!state || !state.playerQueues[socket.id]) return;
@@ -142,6 +141,15 @@ module.exports = (io, socket) => {
     const p = await Player.findOne({ socketId: socket.id });
     if (p) {
         if (isCorrect) p.score += 10;
+        
+        // 🟢 NAYA LOGIC: Player ki poori history save karo
+        p.answerHistory.push({
+            qIndex: currentIdx,
+            questionText: q.questionText,
+            selectedOption: answer === "__SKIP__" ? "Skipped" : answer,
+            isCorrect: isCorrect
+        });
+        
         p.answeredQuestions.push(currentIdx);
         await p.save();
         
@@ -162,21 +170,29 @@ module.exports = (io, socket) => {
             prevResult: { correct: isCorrect, score: p ? p.score : 0, skipped: answer === "__SKIP__" } 
         });
     } else {
+        // 🟢 NAYA LOGIC: Game Over par player ko uska pura Report Card bhejo
         socket.emit("game_over", { 
             message: "Quiz Completed!", 
-            finalScore: p ? p.score : 0
+            finalScore: p ? p.score : 0,
+            correctCount: p ? Math.floor(p.score / 10) : 0,
+            totalQuestions: state.originalQuestions.length,
+            reportCard: p ? p.answerHistory : [] // 🔥 YAHAN SE FRONTEND KO LIST MILEGI
         });
         sendLiveLeaderboard(io, roomCode, state.gameId, state.originalQuestions.length);
     }
   });
 
-  // 4. FORCE END GAME (History Saved ✅)
-  socket.on("force_end_game", async ({ roomCode }) => {
+  // 4. FORCE END GAME (Host UI se trigger hoga)
+  socket.on("end_quiz_session", async ({ roomCode }) => {
      const state = activeGames[roomCode];
      if (state) {
          console.log(`⛔ Host forced end: ${roomCode}`);
          await Game.findByIdAndUpdate(state.gameId, { status: "ended" });
-         io.to(roomCode).emit("game_over", { message: "Host ended the game", finalScore: "Check Host Screen" });
+         // Sabhi players ko game over event bhej do taaki wo results screen pe chale jayein
+         io.to(roomCode).emit("game_over", { 
+             message: "Host ended the game", 
+             isForceEnded: true 
+         });
          delete activeGames[roomCode];
      }
   });
@@ -198,7 +214,6 @@ module.exports = (io, socket) => {
                    console.log(`⚠️ Host disconnected: ${hostGame.roomCode}`);
                    io.to(hostGame.roomCode).emit("lobby_closed", { message: "Host connection lost." });
                    await Game.findByIdAndUpdate(hostGame._id, { status: "cancelled", roomCode: null });
-                   // Note: Yahan players ko udana zaruri nahi kyunki game waise bhi cancelled ho gaya
               }
           }
       } catch (error) { console.error("Error in disconnect:", error); }
@@ -249,13 +264,16 @@ async function sendLiveLeaderboard(io, roomCode, gameId, totalQs = 999) {
         return isOnline || isFinished;
     });
 
+    // 🟢 Score ke hisaab se descending order mein sort
     validPlayers.sort((a, b) => b.score - a.score);
 
-    const leaderboardData = validPlayers.map((p, index) => ({
-        rank: index + 1,
+    const leaderboardData = validPlayers.map((p) => ({
+        id: p.socketId,
         name: p.name,
-        score: p.score,
-        status: p.answeredQuestions.length >= totalQs ? "🏁 Done" : `Q${p.answeredQuestions.length + 1}`
+        // Assuming 10 points per right answer, hum frontend ko correct count de rahe hain
+        correct: Math.floor(p.score / 10), 
+        currentQ: p.answeredQuestions.length,
+        isFinished: p.answeredQuestions.length >= totalQs
     }));
 
     io.to(roomCode).emit("update_leaderboard", leaderboardData);

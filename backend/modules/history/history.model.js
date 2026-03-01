@@ -1,19 +1,34 @@
 const mongoose = require("mongoose");
 
-const HistorySchema = new mongoose.Schema({
-    playerName: { type: String, required: true },
-    roomCode: { type: String, required: true },
-    gameId: { type: mongoose.Schema.Types.ObjectId, ref: "Game" },
-    
-    // Performance Metrics
-    score: { type: Number, required: true },
-    correctAnswers: { type: Number, required: true },
-    totalQuestions: { type: Number, required: true },
-    
-    // Format ready for frontend (e.g., "8/10")
-    resultFormat: { type: String }, 
-    
-    playedAt: { type: Date, default: Date.now }
-});
+const historySchema = new mongoose.Schema({
+  originalGameId: { type: String }, // Reference ke liye
+  roomCode: { type: String },
+  hostDeviceId: { type: String, required: true },
+  settings: {
+    title: String,
+    category: String,
+    timePerQuestion: Number,
+    totalQuestions: Number
+  },
+  status: { type: String, enum: ["ended", "cancelled"], required: true },
+  
+  // 🟢 NAYA: Saare players ka result ek hi array mein (No relational joins needed later!)
+  players: [
+    {
+      name: String,
+      deviceId: String,
+      score: Number,
+      rank: Number,
+      answerHistory: [
+        {
+          qIndex: Number,
+          questionText: String,
+          selectedOption: String,
+          isCorrect: Boolean
+        }
+      ]
+    }
+  ]
+}, { timestamps: true });
 
-module.exports = mongoose.model("History", HistorySchema);
+module.exports = mongoose.model("History", historySchema);
