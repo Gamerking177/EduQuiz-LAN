@@ -273,6 +273,7 @@ async function sendLiveLeaderboard(io, roomCode, gameId, totalQs = 999) {
         // Assuming 10 points per right answer, hum frontend ko correct count de rahe hain
         correct: Math.floor(p.score / 10), 
         currentQ: p.answeredQuestions.length,
+        totalQuestions: totalQs,
         isFinished: p.answeredQuestions.length >= totalQs
     }));
 
