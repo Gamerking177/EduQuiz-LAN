@@ -233,7 +233,7 @@ module.exports = (io, socket) => {
       try {
           console.log(`🔥 [Host] Cancelled Room: ${roomCode}`);
           io.to(roomCode).emit("lobby_closed", { message: "Host ended the game session." });
-          await Game.findOneAndUpdate({ roomCode }, { status: "cancelled", roomCode: null }); 
+          await Game.findOneAndDelete({ roomCode });
           delete activeGames[roomCode]; 
       } catch (error) { console.error(error); }
   });
