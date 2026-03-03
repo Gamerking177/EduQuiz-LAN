@@ -296,9 +296,7 @@ module.exports = (io, socket) => {
 
 // --- SMART LEADERBOARD HELPER ---
 async function sendLiveLeaderboard(io, roomCode, gameId, totalQs) {
-    // Agar kisi vajah se totalQs undefined aaye toh fallback laga diya 999.
     const actualTotalQs = totalQs || 999;
-
     const players = await Player.find({ gameId }).select("name score answeredQuestions socketId");
     const room = io.sockets.adapter.rooms.get(roomCode);
     const activeSocketIds = room ? Array.from(room) : [];
@@ -309,13 +307,23 @@ async function sendLiveLeaderboard(io, roomCode, gameId, totalQs) {
         return isOnline || isFinished;
     });
 
-    // 🟢 Score ke hisaab se descending order mein sort
     validPlayers.sort((a, b) => b.score - a.score);
 
-    const leaderboardData = validPlayers.map((p) => ({
+    // 🟢 BRAHMASTRA: Duplicates ko backend pe hi uda do (Name ke hisaab se unique rakho)
+    const uniqueValidPlayers = [];
+    const seenNames = new Set();
+    
+    for (const p of validPlayers) {
+        if (!seenNames.has(p.name)) {
+            seenNames.add(p.name);
+            uniqueValidPlayers.push(p);
+        }
+    }
+
+    // Ab filter kiye hue players (uniqueValidPlayers) ko map karo
+    const leaderboardData = uniqueValidPlayers.map((p) => ({
         id: p.socketId,
         name: p.name,
-        // Assuming 10 points per right answer, hum frontend ko correct count de rahe hain
         correct: Math.floor(p.score / 10),
         currentQ: p.answeredQuestions.length,
         totalQuestions: actualTotalQs,
