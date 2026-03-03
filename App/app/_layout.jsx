@@ -60,6 +60,8 @@ export default function RootLayout() {
         <Stack.Screen name="create-quiz" />
         <Stack.Screen name="join-game" />
         <Stack.Screen name="waiting-area" />
+        <Stack.Screen name="question-panel" />
+        <Stack.Screen name="host-live-leaderboard" />
       </Stack>
     </QueryClientProvider>
   );

@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, Users, ChevronRight, History } from 'lucide-react-native';
 import ActionCard from '../components/ActionCard'; 
 import * as Network from 'expo-network'; 
-import { useRouter } from 'expo-router';
 
-// 🟢 1. Store Import Karo
+// 🟢 1. Naya Import: useFocusEffect
+import { useRouter, useFocusEffect } from 'expo-router'; 
+
 import useGameStore from '../store/useGameStore'; 
+import socketInstance from '../utils/socket'; 
 
 export default function HomeDashboard() {
   const [isWifiConnected, setIsWifiConnected] = useState(false);
@@ -15,14 +17,41 @@ export default function HomeDashboard() {
 
   const roomCode = useGameStore((state) => state.roomCode);
   const isHost = useGameStore((state) => state.isHost);
+  const playerName = useGameStore((state) => state.playerName);
   const clearStore = useGameStore((state) => state.clearStore);
 
-  useEffect(() => {
-    if (roomCode && !isHost) {
-        clearStore();
+  // Handle Drop Safely
+  const handleDropGame = useCallback(() => {
+    try {
+        if (roomCode) {
+            socketInstance.connect(); 
+            
+            if (isHost && typeof socketInstance.closeLobby === 'function') {
+                socketInstance.closeLobby(roomCode);
+                console.log("🧹 [Host] Room destroyed on drop.");
+            } else if (!isHost && typeof socketInstance.leaveRoom === 'function') {
+                socketInstance.leaveRoom(roomCode, playerName);
+                console.log("🚶 [Player] Left room silently.");
+            }
+        }
+    } catch (error) {
+        console.error("Error dropping game:", error);
+    } finally {
+        clearStore(); 
     }
-  }, [roomCode, isHost]);
+  }, [roomCode, isHost, playerName, clearStore]);
 
+  // 🟢 2. THE FIX: useFocusEffect sirf tab chalega jab Home Screen saamne open hogi
+  useFocusEffect(
+    useCallback(() => {
+      // Agar player home par aaye, tabhi drop karo. Background mein nahi!
+      if (roomCode && !isHost) {
+          handleDropGame(); 
+      }
+    }, [roomCode, isHost, handleDropGame])
+  );
+
+  // Network Check
   useEffect(() => {
     const checkNetwork = async () => {
       const state = await Network.getNetworkStateAsync();
@@ -46,7 +75,7 @@ export default function HomeDashboard() {
           </Text>
         </View>
 
-        {/* 🟢 FIX: Banner sirf tab dikhega jab roomCode HOGA aur banda HOST HOGA */}
+        {/* Banner Drop Button */}
         {roomCode && isHost ? (
           <View className="bg-indigo-600 p-5 mb-8 rounded-3xl flex-row items-center justify-between border border-indigo-400/50 shadow-lg shadow-indigo-900/50">
             <View>
@@ -56,7 +85,11 @@ export default function HomeDashboard() {
               </Text>
             </View>
             <View className="flex-row items-center">
-              <TouchableOpacity onPress={() => clearStore()} className="bg-red-500/20 px-3 py-2 rounded-xl mr-2 border border-red-500/30">
+              
+              <TouchableOpacity 
+                onPress={handleDropGame} 
+                className="bg-red-500/20 px-3 py-2 rounded-xl mr-2 border border-red-500/30"
+              >
                 <Text className="text-red-400 font-[Manrope-Bold] text-xs">Drop</Text>
               </TouchableOpacity>
               
@@ -68,31 +101,14 @@ export default function HomeDashboard() {
         ) : null}
 
         {/* Action Cards */}
-        <ActionCard 
-          title="Create Game"
-          desc="Start hosting a new quiz session as the server."
-          icon={Plus}
-          colorClass="bg-indigo-600"
-          delay={200}
-          onPress={() => router.push("/create-quiz")}
-        />
-        
-        <ActionCard 
-          title="Join Game"
-          desc="Enter a code or scan to participate in a live quiz."
-          icon={Users}
-          colorClass="bg-teal-600"
-          delay={400}
-          onPress={() => router.push("/join-game")}
-        />
+        <ActionCard title="Create Game" desc="Start hosting a new quiz session as the server." icon={Plus} colorClass="bg-indigo-600" delay={200} onPress={() => router.push("/create-quiz")} />
+        <ActionCard title="Join Game" desc="Enter a code or scan to participate in a live quiz." icon={Users} colorClass="bg-teal-600" delay={400} onPress={() => router.push("/join-game")} />
 
-        {/* Recent Activity Header */}
         <View className="flex-row justify-between items-center mt-6 mb-4">
           <Text className="text-gray-400 font-[Manrope-Bold] uppercase tracking-widest text-xs">Recent Activity</Text>
           <TouchableOpacity><Text className="text-indigo-500 font-[Manrope-Bold] text-xs">View All</Text></TouchableOpacity>
         </View>
 
-        {/* Activity Item */}
         <View className="bg-[#111827]/50 border border-gray-900 p-4 rounded-2xl flex-row items-center">
           <View className="bg-gray-800 p-3 rounded-xl mr-4">
             <History size={20} color="#9CA3AF" />
@@ -103,7 +119,6 @@ export default function HomeDashboard() {
           </View>
         </View>
 
-        {/* LAN Status Badge */}
         <View className="items-center mt-12 mb-6">
           <View className={`flex-row items-center bg-[#111827] border ${isWifiConnected ? 'border-green-900/50' : 'border-red-900/50'} px-4 py-2 rounded-full`}>
             <View className={`w-2 h-2 ${isWifiConnected ? 'bg-green-500' : 'bg-red-500'} rounded-full mr-2`} />

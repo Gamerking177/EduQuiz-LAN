@@ -27,7 +27,7 @@ const CategorySelector = ({ selectedCategory, onSelectCategory }) => {
                             onPress={() => onSelectCategory(cat.label)}
                             activeOpacity={0.7}
                             // 🟢 Shadow hatadi gayi hai
-                            className={`flex-row items-center px-4 py-2.5 rounded-full mr-3 border transition-all ${
+                            className={`flex-row items-center px-4 py-2.5 rounded-full mr-3 border ${
                                 isActive 
                                 ? 'bg-indigo-600 border-indigo-500' 
                                 : 'bg-[#050B18] border-gray-800'

@@ -11,10 +11,9 @@ class SocketService {
 
       this.socket = io(SOCKET_URL, {
         // 🟢 FIX 1: Allow polling first, then upgrade to websocket. 
-        // Render load balancers like this approach much better for mobile.
         transports: ["polling", "websocket"],
         reconnection: true,
-        reconnectionAttempts: 10, // Thoda badha diya for weak mobile data
+        reconnectionAttempts: 10,
         reconnectionDelay: 2000,
       });
 
@@ -23,7 +22,6 @@ class SocketService {
       });
 
       this.socket.on("connect_error", (err) => {
-        // 🟢 Detailed error log for debugging
         console.error("❌ [Socket] Connection Error:", err.message, err.description);
       });
 
@@ -36,7 +34,6 @@ class SocketService {
 
   // Host ke liye room create karna
   createRoom(roomCode, hostName) {
-    // 🔥 Backend "join_room" expect karta hai underscore ke sath, aur role: "host"
     this.emit("join_room", { 
         name: hostName, 
         roomCode: roomCode, 
@@ -53,9 +50,24 @@ class SocketService {
     });
   }
 
-  // 🟢 NAYA: Game start karne ke liye (Underscore wala fix)
+  // Game start karne ke liye
   startGame(roomCode) {
     this.emit("start_game", { roomCode }); 
+  }
+
+  // 🟢 NAYA: Player jab answer submit karega
+  submitAnswer(roomCode, answer) {
+    this.emit("submit_answer", { roomCode, answer });
+  }
+
+  // 🟢 NAYA: Host jab lobby close karega (Drop Game)
+  closeLobby(roomCode) {
+    this.emit("host_leaves_lobby", { roomCode });
+  }
+
+  // 🟢 NAYA: Player jab chup-chap room chhodega (Underscore fix ke sath)
+  leaveRoom(roomCode, playerName) {
+    this.emit("leave_room", { roomCode, playerName }); // 👈 Yahan leave_room kar diya
   }
 
   emit(event, data) {

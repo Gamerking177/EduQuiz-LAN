@@ -11,31 +11,40 @@ import CustomAlert from '../components/CustomAlert';
 export default function WaitingArea() {
     const router = useRouter();
 
-    // Zustand se data
     const roomCode = useGameStore((state) => state.roomCode);
     const playerName = useGameStore((state) => state.playerName);
     const quizData = useGameStore((state) => state.quizData);
     const isHost = useGameStore((state) => state.isHost);
+    const clearStore = useGameStore((state) => state.clearStore);
+    const setPlayerName = useGameStore((state) => state.setPlayerName);
 
-    // Local State
     const [players, setPlayers] = useState([]);
     const [isStarting, setIsStarting] = useState(false);
     const [alertConfig, setAlertConfig] = useState({ visible: false, title: '', message: '' });
 
     const showAlert = (title, message) => setAlertConfig({ visible: true, title, message });
 
-    // Fallback names & text
-    const safePlayerName = playerName || (isHost ? "Admin" : "Player");
+    useEffect(() => {
+        if (isHost && playerName !== "Admin") {
+            setPlayerName("Admin");
+        }
+    }, [isHost]);
+
+    const safePlayerName = isHost ? "Admin" : (playerName || "Player");
     const displayTitle = quizData?.settings?.title || quizData?.title || "EduQuiz Game Room";
     const qCount = quizData?.questions?.length || quizData?.settings?.totalQuestions;
     const subtitleText = qCount ? `${qCount} Questions • 30s per Q` : "Waiting for Host to Start...";
 
     useEffect(() => {
         const socket = socketService.connect();
-        console.log(`📡 [WaitingArea] Mounted. Joining room: ${roomCode}`);
 
-        // 🟢 FIX 1: Room Join hamesha yahin se fire hoga taaki disconnect hone pe room na bhoole
+        // 🟢 FIX: Trigger Join tabhi chalega jab roomCode defined hoga
         const triggerJoin = () => {
+            if (!roomCode) {
+                console.warn("⚠️ Room Code is undefined! Cannot join.");
+                return;
+            }
+            console.log(`📡 [WaitingArea] Joining room: ${roomCode} as ${safePlayerName}`);
             socketService.emit("join_room", {
                 name: safePlayerName,
                 roomCode: roomCode,
@@ -46,10 +55,8 @@ export default function WaitingArea() {
         if (socket.connected) triggerJoin();
         else socket.once("connect", triggerJoin);
 
-        // Agar internet hila aur wapas aaya, toh wapas join maaro
         socket.on("reconnect", triggerJoin);
 
-        // 🟢 FIX 2: Single player join karega toh usko add karo
         socketService.on("player_joined", (data) => {
             console.log("👥 [Socket] Naya Player:", data.name);
             setPlayers((prev) => {
@@ -58,16 +65,31 @@ export default function WaitingArea() {
             });
         });
 
-        // 🟢 FIX 3: Backend purane players 'update_leaderboard' mein bhejta hai. Usko bhi suno!
-        socketService.on("update_leaderboard", (data) => {
-            if (Array.isArray(data)) {
-                // Backend database se saare players nikal ke state me daalo
-                const fullList = data.map(p => ({ name: p.name }));
-                setPlayers(fullList);
+        socket.on("update_leaderboard", (leaderboardData) => {
+            // 💡 UNIQUE FILTER: Same naam wale players ko ek hi baar dikhao
+            const uniquePlayers = leaderboardData.reduce((acc, current) => {
+                const x = acc.find(item => item.name === current.name);
+                if (!x) {
+                    return acc.concat([current]);
+                } else {
+                    // Agar purana socket ID hai par naam same hai, toh naye data se update kar do
+                    return acc.map(item => item.name === current.name ? current : item);
+                }
+            }, []);
+
+            setPlayers(uniquePlayers);
+        });
+
+        socketService.on("lobby_closed", (data) => {
+            if (!isHost) {
+                showAlert("Game Ended", "The host has closed the lobby.");
+                setTimeout(() => {
+                    clearStore();
+                    router.replace('/home');
+                }, 2000);
             }
         });
 
-        // 🟢 FIX 4: Event name Underscore (_) ke sath hona chahiye
         socketService.on("game_started", () => {
             console.log("🚀 [Socket] Game Started!");
             setIsStarting(true);
@@ -77,12 +99,20 @@ export default function WaitingArea() {
         return () => {
             socketService.off("player_joined");
             socketService.off("update_leaderboard");
+            socketService.off("lobby_closed");
             socketService.off("game_started");
             socket.off("reconnect");
         };
     }, [roomCode, isHost, safePlayerName]);
 
     const handleLeave = () => {
+        if (isHost) {
+            socketService.closeLobby(roomCode);
+        } else {
+            socketService.leaveRoom(roomCode, safePlayerName);
+        }
+
+        clearStore();
         router.replace('/home');
     };
 
@@ -91,65 +121,55 @@ export default function WaitingArea() {
             showAlert("No Players Yet", "Bhai, kam se kam ek player toh join hone do!");
             return;
         }
-        // Naya function call karo
         socketService.startGame(roomCode);
     };
 
-    // 🟢 HOST & PLAYER INJECTION LOGIC (The Ultimate Fix)
     const allPlayers = (() => {
-        // 1. Socket list se apna naam hata do (duplicate bachane ke liye)
         const otherPlayers = players.filter(p => p.name !== safePlayerName);
-
-        // 2. Mera apna Card
         const myCard = { name: safePlayerName, isMe: true, isRealHost: isHost };
 
-        // 3. Agar main Player hoon, toh mujhe Host ka card alag se add karna padega
-        // Kyunki backend host ko players ki list mein nahi bhejta!
         if (!isHost) {
             const hostCard = { name: "Admin", isMe: false, isRealHost: true };
             return [myCard, hostCard, ...otherPlayers];
         }
 
-        // Agar main Host hoon, toh bas main aur baaki players
         return [myCard, ...otherPlayers];
     })();
 
     return (
         <SafeAreaView className="flex-1 bg-[#050B18] px-6">
-            {/* Header */}
             <View className="py-8 items-center justify-center">
                 <View className="bg-indigo-600/10 px-6 py-2 rounded-full border border-indigo-500/20 mb-2">
                     <Text className="text-indigo-400 font-[Manrope-Bold] text-[10px] uppercase tracking-[4px]">Join Code</Text>
                 </View>
                 <View className="flex-row items-center">
+                    {/* 🟢 FIX: Yahan sure kiya ki roomCode agar string hai tabhi format hoga varna dashed line. */}
                     <Text className="text-white font-[Manrope-Bold] text-5xl tracking-[8px]">
-                        {roomCode?.split('').join(' ') || "------"}
+                        {typeof roomCode === 'string' && roomCode.length > 0 ? roomCode.split('').join(' ') : "------"}
                     </Text>
                 </View>
                 <View className="flex-row items-center mt-4">
                     <View className="w-2 h-2 rounded-full bg-green-500 animate-pulse mr-2" />
                     <Text className="text-gray-500 font-[Manrope-Medium] text-sm">Waiting for more players...</Text>
                 </View>
+
                 <TouchableOpacity onPress={handleLeave} className="absolute top-6 right-0 bg-red-500/10 p-3 rounded-2xl border border-red-500/20">
                     <LogOut size={20} color="#ef4444" />
                 </TouchableOpacity>
             </View>
 
-            {/* Quiz Info */}
             <View className="bg-indigo-600/10 border border-indigo-500/20 p-5 rounded-[32px] mb-8 flex-row items-center">
                 <View className="bg-indigo-600 p-3 rounded-2xl mr-4">
                     <ShieldCheck size={24} color="white" />
                 </View>
                 <View className="flex-1">
                     <Text className="text-white font-[Manrope-Bold] text-lg" numberOfLines={1}>{displayTitle}</Text>
-                    {/* 🟢 Yahan update kiya */}
                     <Text className="text-indigo-400 font-[Manrope-Medium] text-xs">
                         {subtitleText}
                     </Text>
                 </View>
             </View>
 
-            {/* Players List */}
             <View className="flex-1">
                 <View className="flex-row items-center justify-between mb-4 px-2">
                     <View className="flex-row items-center">
@@ -164,10 +184,9 @@ export default function WaitingArea() {
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
                     <View className="flex-row flex-wrap justify-between">
                         {allPlayers.map((player, index) => {
-                            // 🟢 Naya Badge Logic (Ab Host ko Host dikhayega)
                             let badgeText = "Player";
                             if (player.isMe && player.isRealHost) badgeText = "You (Host)";
-                            else if (player.isRealHost) badgeText = "Host"; // Player ki screen pe Host ke liye
+                            else if (player.isRealHost) badgeText = "Host";
                             else if (player.isMe) badgeText = "You";
 
                             return (
@@ -193,7 +212,6 @@ export default function WaitingArea() {
                 </ScrollView>
             </View>
 
-            {/* Footer Status / Start Game Button */}
             <View className="py-6 border-t border-gray-900">
                 {isStarting ? (
                     <View className="flex-row items-center justify-center bg-green-500/20 h-16 rounded-2xl border border-green-500/30">
