@@ -36,7 +36,10 @@ module.exports = (io, socket) => {
                 await game.save();
                 socket.join(roomCode);
                 console.log(`🔒 Host Joined. Room: ${roomCode} | IP: ${clientIp}`);
-                sendLiveLeaderboard(io, roomCode, game._id);
+
+                // 🟢 FIX 1: Total questions pehle hi nikal kar pass karo
+                const totalQsCount = await Question.countDocuments({ gameId: game._id });
+                sendLiveLeaderboard(io, roomCode, game._id, totalQsCount);
                 return;
             }
 
@@ -78,7 +81,10 @@ module.exports = (io, socket) => {
             socket.join(roomCode);
             const count = await Player.countDocuments({ gameId: game._id });
             io.to(roomCode).emit("player_joined", { name, count });
-            sendLiveLeaderboard(io, roomCode, game._id);
+
+            // 🟢 FIX 1: Total questions yahan bhi pass karo
+            const totalQsCount = await Question.countDocuments({ gameId: game._id });
+            sendLiveLeaderboard(io, roomCode, game._id, totalQsCount);
 
         } catch (e) { console.error(e); }
     });
@@ -232,7 +238,10 @@ module.exports = (io, socket) => {
                 const game = await Game.findById(player.gameId);
                 if (game && game.status === 'waiting') {
                     await Player.findByIdAndDelete(player._id);
-                    sendLiveLeaderboard(io, game.roomCode, game._id);
+
+                    // 🟢 NAYA: yahan bhi totalQsCount bhejo
+                    const totalQsCount = await Question.countDocuments({ gameId: game._id });
+                    sendLiveLeaderboard(io, game.roomCode, game._id, totalQsCount);
                 }
             } else {
                 const hostGame = await Game.findOne({ hostSocketId: socket.id });
@@ -250,7 +259,10 @@ module.exports = (io, socket) => {
         const game = await Game.findOne({ roomCode });
         if (game) {
             await Player.deleteMany({ gameId: game._id });
-            sendLiveLeaderboard(io, roomCode, game._id);
+
+            // 🟢 NAYA: yahan bhi totalQsCount bhejo
+            const totalQsCount = await Question.countDocuments({ gameId: game._id });
+            sendLiveLeaderboard(io, roomCode, game._id, totalQsCount);
         }
     });
 
@@ -271,7 +283,10 @@ module.exports = (io, socket) => {
             const game = await Game.findOne({ roomCode });
             if (game) {
                 await Player.findOneAndDelete({ gameId: game._id, socketId: socket.id });
-                sendLiveLeaderboard(io, roomCode, game._id);
+
+                // 🟢 NAYA: yahan bhi totalQsCount bhejo
+                const totalQsCount = await Question.countDocuments({ gameId: game._id });
+                sendLiveLeaderboard(io, roomCode, game._id, totalQsCount);
             }
             socket.leave(roomCode);
         } catch (error) { console.error(error); }
@@ -279,14 +294,17 @@ module.exports = (io, socket) => {
 };
 
 // --- SMART LEADERBOARD HELPER ---
-async function sendLiveLeaderboard(io, roomCode, gameId, totalQs = 999) {
+async function sendLiveLeaderboard(io, roomCode, gameId, totalQs) {
+    // Agar kisi vajah se totalQs undefined aaye toh fallback laga diya 999.
+    const actualTotalQs = totalQs || 999;
+
     const players = await Player.find({ gameId }).select("name score answeredQuestions socketId");
     const room = io.sockets.adapter.rooms.get(roomCode);
     const activeSocketIds = room ? Array.from(room) : [];
 
     const validPlayers = players.filter(p => {
         const isOnline = activeSocketIds.includes(p.socketId);
-        const isFinished = p.answeredQuestions.length >= totalQs;
+        const isFinished = p.answeredQuestions.length >= actualTotalQs;
         return isOnline || isFinished;
     });
 
@@ -299,8 +317,8 @@ async function sendLiveLeaderboard(io, roomCode, gameId, totalQs = 999) {
         // Assuming 10 points per right answer, hum frontend ko correct count de rahe hain
         correct: Math.floor(p.score / 10),
         currentQ: p.answeredQuestions.length,
-        totalQuestions: totalQs,
-        isFinished: p.answeredQuestions.length >= totalQs
+        totalQuestions: actualTotalQs,
+        isFinished: p.answeredQuestions.length >= actualTotalQs
     }));
 
     io.to(roomCode).emit("update_leaderboard", leaderboardData);
