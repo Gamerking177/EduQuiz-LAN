@@ -239,7 +239,6 @@ module.exports = (io, socket) => {
                 if (game && game.status === 'waiting') {
                     await Player.findByIdAndDelete(player._id);
 
-                    // 🟢 NAYA: yahan bhi totalQsCount bhejo
                     const totalQsCount = await Question.countDocuments({ gameId: game._id });
                     sendLiveLeaderboard(io, game.roomCode, game._id, totalQsCount);
                 }
@@ -248,7 +247,9 @@ module.exports = (io, socket) => {
                 if (hostGame && hostGame.status === 'waiting') {
                     console.log(`⚠️ Host disconnected: ${hostGame.roomCode}`);
                     io.to(hostGame.roomCode).emit("lobby_closed", { message: "Host connection lost." });
-                    await Game.findByIdAndUpdate(hostGame._id, { status: "cancelled", roomCode: null });
+
+                    // 🟢 FIX YAHAN HAI: update karne ki jagah delete mardo
+                    await Game.findByIdAndDelete(hostGame._id);
                 }
             }
         } catch (error) { console.error("Error in disconnect:", error); }
