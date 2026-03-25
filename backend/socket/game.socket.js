@@ -4,7 +4,7 @@ const Question = require("../modules/question/question.model");
 
 const activeGames = {};
 
-// 🔀 Helper: Array ko mix (shuffle) karne ke liye (ANTI-CHEAT)
+// Helper: Array ko mix (shuffle) karne ke liye (ANTI-CHEAT)
 function shuffleArray(array) {
     let shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -16,13 +16,13 @@ function shuffleArray(array) {
 
 module.exports = (io, socket) => {
 
-    // 1. JOIN ROOM (Double Security: IP Check + Name Collision 🛡️)
+    // 1. JOIN ROOM (Double Security: IP Check + Name Collision)
     socket.on("join_room", async ({ name, roomCode, role, deviceId }) => {
         try {
             const game = await Game.findOne({ roomCode, status: { $in: ["waiting", "active"] } });
             if (!game) return socket.emit("error_msg", { message: "Room not found or already ended." });
 
-            // 🌐 FIX 2: STRONGER IP CLEANING (Proxy bypass rokne ke liye)
+            // STRONGER IP CLEANING (Proxy bypass rokne ke liye)
             let clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address || "";
             if (typeof clientIp === 'string' && clientIp.includes(',')) {
                 clientIp = clientIp.split(',')[0].trim();
@@ -32,12 +32,11 @@ module.exports = (io, socket) => {
             // --- HOST LOGIC ---
             if (role === "host") {
                 game.hostSocketId = socket.id;
-                game.hostIp = clientIp; // Host ka IP database mein update kar diya
+                game.hostIp = clientIp;
                 await game.save();
                 socket.join(roomCode);
-                console.log(`🔒 Host Joined. Room: ${roomCode} | IP: ${clientIp}`);
+                console.log(`Host Joined. Room: ${roomCode} | IP: ${clientIp}`);
 
-                // 🟢 FIX 1: Total questions pehle hi nikal kar pass karo
                 const totalQsCount = await Question.countDocuments({ gameId: game._id });
                 sendLiveLeaderboard(io, roomCode, game._id, totalQsCount);
                 return;
@@ -45,15 +44,22 @@ module.exports = (io, socket) => {
 
             // --- PLAYER LOGIC ---
 
-            // 🌐 FIX 2: Wi-Fi Restrict Check (Gatekeeper)
+            // LATE JOIN SECURITY CHECK
+            if (game.status === "active") {
+                if (!game.settings.allowLateJoin) {
+                    return socket.emit("error_msg", { message: "Game has already started. Late joining is not allowed." });
+                }
+            }
+
+            // Wi-Fi Restrict Check (Gatekeeper)
             if (game.settings.restrictToWifi && clientIp !== game.hostIp && clientIp !== "127.0.0.1") {
-                console.log(`🚫 Blocked IP: ${clientIp}, Host IP: ${game.hostIp}`);
+                console.log(`Blocked IP: ${clientIp}, Host IP: ${game.hostIp}`);
                 return socket.emit("error_msg", {
                     message: "This quiz is restricted to the Host's Wi-Fi network! Please turn off mobile data and connect to the local Wi-Fi."
                 });
             }
 
-            // 🛡️ FIX 1: DUPLICATE NAME CHECK (Case-Insensitive)
+            // DUPLICATE NAME CHECK (Case-Insensitive)
             let existingPlayer = await Player.findOne({
                 gameId: game._id,
                 name: { $regex: new RegExp(`^${name}$`, "i") }
@@ -82,14 +88,50 @@ module.exports = (io, socket) => {
             const count = await Player.countDocuments({ gameId: game._id });
             io.to(roomCode).emit("player_joined", { name, count });
 
-            // 🟢 FIX 1: Total questions yahan bhi pass karo
             const totalQsCount = await Question.countDocuments({ gameId: game._id });
             sendLiveLeaderboard(io, roomCode, game._id, totalQsCount);
+
+            // LATE JOIN INJECTION (Agar game active hai aur upar allowLateJoin pass ho gaya)
+            if (game.status === "active" && activeGames[roomCode]) {
+                const state = activeGames[roomCode];
+                
+                // Naye player ke liye naya question queue banao
+                const shuffledQ = shuffleArray(state.originalQuestions).map(q => {
+                    const questionData = q._doc || q;
+                    return {
+                        ...questionData,
+                        options: questionData.type === "TRUE_FALSE" 
+                            ? questionData.options 
+                            : shuffleArray(questionData.options)
+                    };
+                });
+
+                // RAM State update karo
+                state.playerProgress[socket.id] = 0;
+                state.playerQueues[socket.id] = shuffledQ;
+                state.totalPlayers += 1;
+
+                // Player ko game started bhejo taaki UI switch ho, aur 1 second baad pehla question bhejo
+                socket.emit("game_started", { total: state.originalQuestions.length });
+                
+                setTimeout(() => {
+                    if (shuffledQ.length > 0) {
+                        const q1 = shuffledQ[0];
+                        socket.emit("new_question", {
+                            questionText: q1.questionText,
+                            options: q1.options,
+                            qIndex: 0,
+                            total: shuffledQ.length,
+                            timeLimit: q1.timeLimit || state.settings.timePerQuestion
+                        });
+                    }
+                }, 1000);
+            }
 
         } catch (e) { console.error(e); }
     });
 
-    // 2. START GAME (ANTI-CHEAT SHUFFLED VERSION 🛡️)
+    // 2. START GAME (ANTI-CHEAT SHUFFLED VERSION)
     socket.on("start_game", async ({ roomCode }) => {
         const game = await Game.findOne({ roomCode });
         if (!game) return;
@@ -155,7 +197,7 @@ module.exports = (io, socket) => {
         }, 2000);
     });
 
-    // 3. SUBMIT ANSWER (History Saving 🛡️)
+    // 3. SUBMIT ANSWER (History Saving)
     socket.on("submit_answer", async ({ roomCode, answer }) => {
         const state = activeGames[roomCode];
         if (!state || !state.playerQueues[socket.id]) return;
@@ -174,7 +216,6 @@ module.exports = (io, socket) => {
         if (p) {
             if (isCorrect) p.score += 10;
 
-            // 🟢 NAYA LOGIC: Player ki poori history save karo
             p.answerHistory.push({
                 qIndex: currentIdx,
                 questionText: q.questionText,
@@ -202,13 +243,12 @@ module.exports = (io, socket) => {
                 prevResult: { correct: isCorrect, score: p ? p.score : 0, skipped: answer === "__SKIP__" }
             });
         } else {
-            // 🟢 NAYA LOGIC: Game Over par player ko uska pura Report Card bhejo
             socket.emit("game_over", {
                 message: "Quiz Completed!",
                 finalScore: p ? p.score : 0,
                 correctCount: p ? Math.floor(p.score / 10) : 0,
                 totalQuestions: state.originalQuestions.length,
-                reportCard: p ? p.answerHistory : [] // 🔥 YAHAN SE FRONTEND KO LIST MILEGI
+                reportCard: p ? p.answerHistory : [] 
             });
             sendLiveLeaderboard(io, roomCode, state.gameId, state.originalQuestions.length);
         }
@@ -218,9 +258,8 @@ module.exports = (io, socket) => {
     socket.on("end_quiz_session", async ({ roomCode }) => {
         const state = activeGames[roomCode];
         if (state) {
-            console.log(`⛔ Host forced end: ${roomCode}`);
+            console.log(`Host forced end: ${roomCode}`);
             await Game.findByIdAndUpdate(state.gameId, { status: "ended" });
-            // Sabhi players ko game over event bhej do taaki wo results screen pe chale jayein
             io.to(roomCode).emit("game_over", {
                 message: "Host ended the game",
                 isForceEnded: true
@@ -229,9 +268,9 @@ module.exports = (io, socket) => {
         }
     });
 
-    // 5. DISCONNECT (Smart Cleanup 🧹 & History Saved ✅)
+    // 5. DISCONNECT (Smart Cleanup & History Saved)
     socket.on("disconnect", async (reason) => {
-        console.log(`🔌 Disconnect: ${socket.id} (Reason: ${reason})`);
+        console.log(`Disconnect: ${socket.id} (Reason: ${reason})`);
         try {
             const player = await Player.findOne({ socketId: socket.id });
             if (player) {
@@ -245,10 +284,9 @@ module.exports = (io, socket) => {
             } else {
                 const hostGame = await Game.findOne({ hostSocketId: socket.id });
                 if (hostGame && hostGame.status === 'waiting') {
-                    console.log(`⚠️ Host disconnected: ${hostGame.roomCode}`);
+                    console.log(`Host disconnected: ${hostGame.roomCode}`);
                     io.to(hostGame.roomCode).emit("lobby_closed", { message: "Host connection lost." });
 
-                    // 🟢 FIX YAHAN HAI: update karne ki jagah delete mardo
                     await Game.findByIdAndDelete(hostGame._id);
                 }
             }
@@ -261,16 +299,15 @@ module.exports = (io, socket) => {
         if (game) {
             await Player.deleteMany({ gameId: game._id });
 
-            // 🟢 NAYA: yahan bhi totalQsCount bhejo
             const totalQsCount = await Question.countDocuments({ gameId: game._id });
             sendLiveLeaderboard(io, roomCode, game._id, totalQsCount);
         }
     });
 
-    // 7. HOST LEAVES LOBBY (DROP GAME - History Saved ✅)
+    // 7. HOST LEAVES LOBBY (DROP GAME - History Saved)
     socket.on("host_leaves_lobby", async ({ roomCode }) => {
         try {
-            console.log(`🔥 [Host] Cancelled Room: ${roomCode}`);
+            console.log(`[Host] Cancelled Room: ${roomCode}`);
             io.to(roomCode).emit("lobby_closed", { message: "Host ended the game session." });
             await Game.findOneAndDelete({ roomCode });
             delete activeGames[roomCode];
@@ -280,12 +317,11 @@ module.exports = (io, socket) => {
     // 8. PLAYER CHUP-CHAP LEAVES ROOM
     socket.on("leave_room", async ({ roomCode, playerName }) => {
         try {
-            console.log(`🚶 [Player] ${playerName} left room: ${roomCode}`);
+            console.log(`[Player] ${playerName} left room: ${roomCode}`);
             const game = await Game.findOne({ roomCode });
             if (game) {
                 await Player.findOneAndDelete({ gameId: game._id, socketId: socket.id });
 
-                // 🟢 NAYA: yahan bhi totalQsCount bhejo
                 const totalQsCount = await Question.countDocuments({ gameId: game._id });
                 sendLiveLeaderboard(io, roomCode, game._id, totalQsCount);
             }
@@ -309,7 +345,6 @@ async function sendLiveLeaderboard(io, roomCode, gameId, totalQs) {
 
     validPlayers.sort((a, b) => b.score - a.score);
 
-    // 🟢 BRAHMASTRA: Duplicates ko backend pe hi uda do (Name ke hisaab se unique rakho)
     const uniqueValidPlayers = [];
     const seenNames = new Set();
     
@@ -320,7 +355,6 @@ async function sendLiveLeaderboard(io, roomCode, gameId, totalQs) {
         }
     }
 
-    // Ab filter kiye hue players (uniqueValidPlayers) ko map karo
     const leaderboardData = uniqueValidPlayers.map((p) => ({
         id: p.socketId,
         name: p.name,
