@@ -10,7 +10,6 @@ class SocketService {
       console.log("🔌 [Socket] Connecting to server...");
 
       this.socket = io(SOCKET_URL, {
-        // 🟢 FIX 1: Allow polling first, then upgrade to websocket. 
         transports: ["polling", "websocket"],
         reconnection: true,
         reconnectionAttempts: 10,
@@ -32,42 +31,45 @@ class SocketService {
     return this.socket;
   }
 
-  // Host ke liye room create karna
-  createRoom(roomCode, hostName) {
+  // 🟢 FIX 1: Host ke liye room create karna (deviceId add kiya)
+  createRoom(roomCode, hostName, deviceId) {
     this.emit("join_room", { 
         name: hostName, 
         roomCode: roomCode, 
-        role: "host" 
+        role: "host",
+        deviceId: deviceId || "unknown_host" // Backend check ke liye
     });
   }
 
-  // Player ke liye room join karna
+  // 🟢 FIX 2: Player ke liye room join karna (deviceId add kiya)
   joinRoom(roomCode, playerName, deviceId) {
     this.emit("join_room", { 
         name: playerName, 
         roomCode: roomCode, 
-        role: "player" 
+        role: "player",
+        deviceId: deviceId || "unknown_player" // Backend duplicate name check ke liye
     });
   }
 
-  // Game start karne ke liye
   startGame(roomCode) {
     this.emit("start_game", { roomCode }); 
   }
 
-  // 🟢 NAYA: Player jab answer submit karega
   submitAnswer(roomCode, answer) {
     this.emit("submit_answer", { roomCode, answer });
   }
 
-  // 🟢 NAYA: Host jab lobby close karega (Drop Game)
   closeLobby(roomCode) {
     this.emit("host_leaves_lobby", { roomCode });
   }
 
-  // 🟢 NAYA: Player jab chup-chap room chhodega (Underscore fix ke sath)
   leaveRoom(roomCode, playerName) {
-    this.emit("leave_room", { roomCode, playerName }); // 👈 Yahan leave_room kar diya
+    this.emit("leave_room", { roomCode, playerName });
+  }
+
+  // 🟢 NAYA FIX 3: Host jab running quiz ko jabardasti stop karega
+  endQuizSession(roomCode) {
+    this.emit("end_quiz_session", { roomCode });
   }
 
   emit(event, data) {

@@ -2,14 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, Users, ChevronRight, History } from 'lucide-react-native';
-import ActionCard from '../components/ActionCard'; 
-import * as Network from 'expo-network'; 
+import ActionCard from '../components/ActionCard';
+import * as Network from 'expo-network';
 
 // 🟢 1. Naya Import: useFocusEffect
-import { useRouter, useFocusEffect } from 'expo-router'; 
+import { useRouter, useFocusEffect } from 'expo-router';
 
-import useGameStore from '../store/useGameStore'; 
-import socketInstance from '../utils/socket'; 
+import useGameStore from '../store/useGameStore';
+import socketInstance from '../utils/socket';
 
 export default function HomeDashboard() {
   const [isWifiConnected, setIsWifiConnected] = useState(false);
@@ -23,21 +23,21 @@ export default function HomeDashboard() {
   // Handle Drop Safely
   const handleDropGame = useCallback(() => {
     try {
-        if (roomCode) {
-            socketInstance.connect(); 
-            
-            if (isHost && typeof socketInstance.closeLobby === 'function') {
-                socketInstance.closeLobby(roomCode);
-                console.log("🧹 [Host] Room destroyed on drop.");
-            } else if (!isHost && typeof socketInstance.leaveRoom === 'function') {
-                socketInstance.leaveRoom(roomCode, playerName);
-                console.log("🚶 [Player] Left room silently.");
-            }
+      if (roomCode) {
+        socketInstance.connect();
+
+        if (isHost && typeof socketInstance.closeLobby === 'function') {
+          socketInstance.closeLobby(roomCode);
+          console.log("🧹 [Host] Room destroyed on drop.");
+        } else if (!isHost && typeof socketInstance.leaveRoom === 'function') {
+          socketInstance.leaveRoom(roomCode, playerName);
+          console.log("🚶 [Player] Left room silently.");
         }
+      }
     } catch (error) {
-        console.error("Error dropping game:", error);
+      console.error("Error dropping game:", error);
     } finally {
-        clearStore(); 
+      clearStore();
     }
   }, [roomCode, isHost, playerName, clearStore]);
 
@@ -46,7 +46,7 @@ export default function HomeDashboard() {
     useCallback(() => {
       // Agar player home par aaye, tabhi drop karo. Background mein nahi!
       if (roomCode && !isHost) {
-          handleDropGame(); 
+        handleDropGame();
       }
     }, [roomCode, isHost, handleDropGame])
   );
@@ -59,14 +59,14 @@ export default function HomeDashboard() {
     };
 
     checkNetwork();
-    const interval = setInterval(checkNetwork, 5000); 
+    const interval = setInterval(checkNetwork, 5000);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <SafeAreaView className="flex-1 bg-[#050B18] px-6">
       <ScrollView showsVerticalScrollIndicator={false} className="mt-8">
-        
+
         {/* Header */}
         <View className="items-center mb-10">
           <Text className="text-white text-4xl font-[Manrope-Bold]">EduQuiz LAN</Text>
@@ -85,14 +85,14 @@ export default function HomeDashboard() {
               </Text>
             </View>
             <View className="flex-row items-center">
-              
-              <TouchableOpacity 
-                onPress={handleDropGame} 
+
+              <TouchableOpacity
+                onPress={handleDropGame}
                 className="bg-red-500/20 px-3 py-2 rounded-xl mr-2 border border-red-500/30"
               >
                 <Text className="text-red-400 font-[Manrope-Bold] text-xs">Drop</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity onPress={() => router.push('/waiting-area')} className="bg-white px-4 py-2 rounded-xl">
                 <Text className="text-indigo-600 font-[Manrope-Bold] text-xs">Resume</Text>
               </TouchableOpacity>

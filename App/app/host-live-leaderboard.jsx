@@ -61,15 +61,23 @@ export default function HostLiveLeaderboard() {
 
     // 🔴 Actual End Game Logic (Jab Modal mein 'Yes, End' dabega)
     const handleConfirmEnd = () => {
+        // 1. Agar pehle se end ho raha hai, toh dubara click hone se roko
+        if (isEnding) return;
+
         setIsEnding(true);
-        // Tere socket helper ka use karke backend ko batao
+
+        // 2. Tere socket helper ka use karke backend ko batao
         socketInstance.emit("end_quiz_session", { roomCode });
 
+        // 3. Pehle Modal ko hide karo
+        setModalVisible(false);
+
+        // 4. Modal ka fade animation (lagbhag 300ms) khatam hone ke baad route change karo
         setTimeout(() => {
-            setModalVisible(false); // Modal chupao
             clearStore();
+            // router.replace use kar rahe hain taaki back dabane par wapas is screen par na aaye
             router.replace('/home');
-        }, 1000);
+        }, 500);
     };
 
     return (
@@ -145,7 +153,8 @@ export default function HostLiveLeaderboard() {
                         <Text className="text-white font-[Manrope-Bold] text-xl">End Game</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        onPress={() => router.push('/')}
+                        // 🟢 FIX: Back dabane par bhi pehle confirm karo ki kya sacchi game end karna hai?
+                        onPress={() => setModalVisible(true)}
                         className="bg-transparent border-2 border-[#5B4CFF]/60 flex-row items-center justify-center py-[18px] rounded-[16px]"
                     >
                         <View className="mr-3">

@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, startTransition } from 'react'; // 🟢 FIX: startTransition import kiya
 import { View, Text, TextInput, TouchableOpacity } from 'react-native';
 import { Trash2, CheckCircle2, Circle, PlusCircle, X } from 'lucide-react-native';
 
@@ -6,25 +6,31 @@ const QuestionCard = ({ index, questionData, updateQuestion, removeQuestion }) =
 
     // 🟢 Safe Toggle Logic: navigation ko touch nahi karega
     const toggleFormat = (format) => {
-        if (format === 'True/False') {
-            updateQuestion({
-                format: 'True/False',
-                options: ['True', 'False'],
-                correctAnswer: 0
-            });
-        } else {
-            updateQuestion({
-                format: 'MCQ',
-                options: ['', '', '', ''],
-                correctAnswer: 0
-            });
-        }
+        // 🟢 NAYA: startTransition lagaya taaki UI freeze na ho
+        startTransition(() => {
+            if (format === 'True/False') {
+                updateQuestion({
+                    format: 'True/False',
+                    options: ['True', 'False'],
+                    correctAnswer: 0
+                });
+            } else {
+                updateQuestion({
+                    format: 'MCQ',
+                    options: ['', '', '', ''],
+                    correctAnswer: 0
+                });
+            }
+        });
     };
 
     const handleOptionChange = (text, optIdx) => {
-        const newOptions = [...questionData.options];
-        newOptions[optIdx] = text;
-        updateQuestion({ options: newOptions });
+        // 🟢 NAYA: Typing lag hatane ke liye startTransition
+        startTransition(() => {
+            const newOptions = [...questionData.options];
+            newOptions[optIdx] = text;
+            updateQuestion({ options: newOptions });
+        });
     };
 
     return (
@@ -58,7 +64,8 @@ const QuestionCard = ({ index, questionData, updateQuestion, removeQuestion }) =
                 placeholder="Type your question here..."
                 placeholderTextColor="#4B5563"
                 value={questionData.text}
-                onChangeText={(text) => updateQuestion({ text })}
+                // 🟢 NAYA: Typing smooth karne ke liye
+                onChangeText={(text) => startTransition(() => updateQuestion({ text }))}
                 className="bg-[#050B18] text-white p-4 rounded-2xl border border-gray-800 font-[Manrope-SemiBold] mb-6"
                 multiline
                 textAlignVertical="top"
@@ -76,9 +83,10 @@ const QuestionCard = ({ index, questionData, updateQuestion, removeQuestion }) =
                         { label: 'Hard', value: 'hard' }
                     ].map((item) => (
                         <TouchableOpacity
-                            // 🟢 Unique Key: item.value (easy, medium, hard)
+                            // 🟢 Unique Key
                             key={`diff-${item.value}`}
-                            onPress={() => updateQuestion({ difficulty: item.value })}
+                            // 🟢 NAYA: yahan bhi transition laga diya safe side ke liye
+                            onPress={() => startTransition(() => updateQuestion({ difficulty: item.value }))}
                             activeOpacity={0.7}
                             className={`flex-1 py-2 rounded-xl items-center border ${questionData.difficulty === item.value
                                     ? 'bg-indigo-600 border-indigo-500'
@@ -126,8 +134,10 @@ const QuestionCard = ({ index, questionData, updateQuestion, removeQuestion }) =
                         {questionData.options.length > 2 && questionData.format === 'MCQ' && (
                             <TouchableOpacity
                                 onPress={() => {
-                                    const newOpts = questionData.options.filter((_, i) => i !== idx);
-                                    updateQuestion({ options: newOpts });
+                                    startTransition(() => {
+                                        const newOpts = questionData.options.filter((_, i) => i !== idx);
+                                        updateQuestion({ options: newOpts });
+                                    });
                                 }}
                                 className="pr-3"
                             >
@@ -141,4 +151,4 @@ const QuestionCard = ({ index, questionData, updateQuestion, removeQuestion }) =
     );
 };
 
-export default memo(QuestionCard); // 🟢 Memo use karo rerender crash bachane ke liye
+export default memo(QuestionCard); // 🟢 Memo on point!

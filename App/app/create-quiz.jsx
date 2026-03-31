@@ -1,24 +1,29 @@
-import React, { useState, useCallback } from 'react';
-import { ScrollView, View, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import React, { useState, useCallback, startTransition } from 'react';
+import { View, Text, TouchableOpacity, Image, ActivityIndicator, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// 🟢 Naye Icons Import kiye (Download aur FileJson)
 import { ChevronLeft, FileText, ArrowRight, PlusCircle, Image as ImageIcon, X, Download } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-
-// 🟢 Naye Expo Packages File Read karne ke liye
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+
+// 🟢 NAYA: React Query Import kiya
+import { useMutation } from '@tanstack/react-query';
 
 import QuizInput from '../components/QuizInput';
 import QuestionCard from '../components/QuestionCard';
 import GameSettings from '../components/GameSettings';
-import CategorySelector from '../components/CategorySelector'; 
+import CategorySelector from '../components/CategorySelector';
 
 import { createGame } from '../utils/api';
 import socketService from '../utils/socket';
 import useGameStore from '../store/useGameStore';
 import CustomAlert from '../components/CustomAlert';
+
+const getNewQuestion = () => ({
+    id: Date.now().toString() + Math.random().toString(), 
+    text: '', options: ['', '', '', ''], correctAnswer: 0, format: 'MCQ', difficulty: 'Easy'
+});
 
 export default function CreateQuiz() {
     const router = useRouter();
@@ -27,12 +32,13 @@ export default function CreateQuiz() {
     const setQuizData = useGameStore((state) => state.setQuizData);
     const setIsHost = useGameStore((state) => state.setIsHost);
 
-    const [isLoading, setIsLoading] = useState(false);const [alertConfig, setAlertConfig] = useState({ visible: false, title: '', message: '', type: 'error' });
+    // 🟢 isLoading hata diya kyunki React Query automatically isPending deta hai
+    const [alertConfig, setAlertConfig] = useState({ visible: false, title: '', message: '', type: 'error' });
 
     const [formData, setFormData] = useState({
         title: '',
         description: '',
-        category: 'Programming', 
+        category: 'Programming',
         quizImage: null,
         questionCount: 1,
         maxPlayers: 50,
@@ -42,9 +48,7 @@ export default function CreateQuiz() {
         questionOrder: 'Sequential',
     });
 
-    const [questions, setQuestions] = useState([
-        { text: '', options: ['', '', '', ''], correctAnswer: 0, format: 'MCQ', difficulty: 'Easy' }
-    ]);
+    const [questions, setQuestions] = useState([getNewQuestion()]);
 
     const showAlert = (title, message, type = 'error') => {
         setAlertConfig({ visible: true, title, message, type });
@@ -67,12 +71,10 @@ export default function CreateQuiz() {
         }
     };
 
-    // 🟢 NAYA: Import File Logic (JSON focus for testing)
-    // 🟢 SUPER SMART IMPORT LOGIC
     const handleImportQuiz = async () => {
         try {
             const result = await DocumentPicker.getDocumentAsync({
-                type: ['application/json', 'text/plain'], 
+                type: ['application/json', 'text/plain'],
                 copyToCacheDirectory: true,
             });
 
@@ -81,17 +83,17 @@ export default function CreateQuiz() {
             const fileUri = result.assets[0].uri;
             const fileContent = await FileSystem.readAsStringAsync(fileUri);
             const parsedData = JSON.parse(fileContent);
-            
-            // 1. Check karo ki file mein 'questions' hain ya nahi
+
             if (parsedData.questions && Array.isArray(parsedData.questions)) {
+                const questionsWithIds = parsedData.questions.map(q => ({
+                    ...q, 
+                    id: q.id || (Date.now().toString() + Math.random().toString())
+                }));
                 
-                // 2. Questions ko state mein daalo
-                setQuestions(parsedData.questions);
-                
-                // 3. Form Data (Title, Settings, Category) ko auto-fill karo
+                setQuestions(questionsWithIds);
+
                 setFormData(prev => ({
                     ...prev,
-                    // Agar settings block hai toh wahan se lo, warna root se lo
                     title: parsedData.settings?.title || parsedData.title || prev.title,
                     description: parsedData.settings?.description || parsedData.description || prev.description,
                     category: parsedData.settings?.category || parsedData.category || prev.category,
@@ -100,12 +102,12 @@ export default function CreateQuiz() {
                     restrictToWifi: parsedData.settings?.restrictToWifi !== undefined ? parsedData.settings.restrictToWifi : prev.restrictToWifi,
                     questionOrder: parsedData.settings?.questionOrder || prev.questionOrder,
                     maxPlayers: parsedData.settings?.maxPlayers || prev.maxPlayers,
-                    questionCount: parsedData.questions.length
+                    questionCount: questionsWithIds.length
                 }));
-                
+
                 showAlert("Success", "All Settings and Questions imported perfectly! 🔥", "success");
             } else {
-                showAlert("Invalid Format", "JSON format galat hai. 'questions' array nahi mila.", "error");
+                showAlert("Invalid Format", "Invalid JSON format. The 'questions' array is missing.", "error");
             }
         } catch (error) {
             console.error("Import Error:", error);
@@ -114,7 +116,7 @@ export default function CreateQuiz() {
     };
 
     const addQuestion = () => {
-        setQuestions([...questions, { text: '', options: ['', '', '', ''], correctAnswer: 0, format: 'MCQ', difficulty: 'Medium' }]);
+        setQuestions([...questions, getNewQuestion()]);
         setFormData(prev => ({ ...prev, questionCount: prev.questionCount + 1 }));
     };
 
@@ -132,48 +134,20 @@ export default function CreateQuiz() {
         }
     };
 
-    const handleCreateLobby = async () => {
-        if (!formData.title || questions.length === 0) {
-            showAlert("Details Missing", "Bhai, Quiz ka title aur kam se kam ek question toh daal!", "error");
-            return;
-        }
-
-        try {
-            setIsLoading(true);
-
-            const formattedQuestions = questions.map((q) => ({
-                questionText: q.text,
-                type: q.format === "True/False" ? "TRUE_FALSE" : "MCQ",
-                options: q.format === "True/False" ? ["True", "False"] : q.options,
-                correctAnswer: String(q.options[q.correctAnswer]), 
-                difficulty: q.difficulty.toLowerCase(), 
-                timeLimit: parseInt(formData.timePerQuestion) || 15 
-            }));
-
-            const apiPayload = {
-                questions: formattedQuestions, 
-                settings: {
-                    title: formData.title,
-                    category: formData.category,
-                    timePerQuestion: parseInt(formData.timePerQuestion) || 15,
-                    allowLateJoin: formData.allowLateJoin,
-                    questionOrder: formData.questionOrder === 'Random' ? 'random' : 'sequence',
-                    restrictToWifi: formData.restrictToWifi,
-                    maxPlayers: formData.maxPlayers
-                }
-            };
-
-            const response = await createGame(apiPayload);
-
+    // ==========================================
+    // 🟢 NAYA: React Query ka useMutation
+    // ==========================================
+    const createGameMutation = useMutation({
+        mutationFn: createGame,
+        onSuccess: (response) => {
             if (response.success) {
                 const { roomCode } = response.data;
                 setRoomCode(roomCode);
                 setIsHost(true);
 
-                // 🟢 YAHAN SE DATA STORE MEIN JAYEGA, TABHI LEADERBOARD PE DIKHEGA
                 setQuizData({
                     title: formData.title,
-                    totalQuestions: questions.length, 
+                    totalQuestions: questions.length,
                     category: formData.category
                 });
 
@@ -182,12 +156,133 @@ export default function CreateQuiz() {
 
                 router.push('/waiting-area');
             }
-        } catch (error) {
+        },
+        onError: (error) => {
             showAlert("API Error", error.response?.data?.message || "Check console for field mismatch!", "error");
-        } finally {
-            setIsLoading(false);
         }
+    });
+
+    const handleCreateLobby = () => {
+        if (!formData.title || questions.length === 0) {
+            showAlert("Details Missing", "Please enter a quiz title and add at least one question!", "error");
+            return;
+        }
+
+        const formattedQuestions = questions.map((q) => ({
+            questionText: q.text,
+            type: q.format === "True/False" ? "TRUE_FALSE" : "MCQ",
+            options: q.format === "True/False" ? ["True", "False"] : q.options,
+            correctAnswer: String(q.options[q.correctAnswer]),
+            difficulty: q.difficulty.toLowerCase(),
+            timeLimit: parseInt(formData.timePerQuestion) || 15
+        }));
+
+        const apiPayload = {
+            questions: formattedQuestions,
+            settings: {
+                title: formData.title,
+                category: formData.category,
+                timePerQuestion: parseInt(formData.timePerQuestion) || 15,
+                allowLateJoin: formData.allowLateJoin,
+                questionOrder: formData.questionOrder === 'Random' ? 'random' : 'sequence',
+                restrictToWifi: formData.restrictToWifi,
+                maxPlayers: formData.maxPlayers
+            }
+        };
+
+        // 🟢 Seedha mutate call karo, try-catch ki tension nahi!
+        createGameMutation.mutate(apiPayload);
     };
+
+    const renderHeader = () => (
+        <View className="px-6 mt-4">
+            <TouchableOpacity onPress={handleImportQuiz} className="flex-row items-center justify-center bg-indigo-500/20 border-dashed border-2 border-indigo-500/40 p-4 rounded-2xl mb-6">
+                <Download size={20} color="#818CF8" />
+                <Text className="text-indigo-300 font-[Manrope-Bold] text-base ml-2">Import Dummy JSON</Text>
+            </TouchableOpacity>
+
+            <View className="bg-[#111827]/30 border border-gray-800 p-5 rounded-[32px] mb-6">
+                <View className="flex-row items-center mb-4">
+                    <FileText size={18} color="#6366f1" />
+                    <Text className="text-white font-[Manrope-Bold] ml-2">Quiz Details</Text>
+                </View>
+
+                <TouchableOpacity onPress={pickQuizImage} className="border-2 border-dashed border-gray-800 h-44 rounded-3xl items-center justify-center mb-6 bg-[#050B18] overflow-hidden">
+                    {formData.quizImage ? (
+                        <View className="w-full h-full relative">
+                            <Image source={{ uri: formData.quizImage }} className="w-full h-full" resizeMode="cover" />
+                            <TouchableOpacity onPress={() => setFormData({ ...formData, quizImage: null })} className="absolute top-2 right-2 bg-black/50 p-1 rounded-full">
+                                <X size={16} color="white" />
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        <>
+                            <View className="bg-indigo-500/10 p-4 rounded-full">
+                                <ImageIcon size={32} color="#6366f1" />
+                            </View>
+                            <Text className="text-gray-400 font-[Manrope-Medium] mt-3 text-sm">Add Quiz Banner</Text>
+                        </>
+                    )}
+                </TouchableOpacity>
+
+                <QuizInput 
+                    label="Quiz Title" 
+                    placeholder="Enter Quiz Title" 
+                    value={formData.title} 
+                    onChangeText={(val) => startTransition(() => setFormData({ ...formData, title: val }))} 
+                />
+                <QuizInput 
+                    label="Description (Optional)" 
+                    placeholder="What is this quiz about?" 
+                    multiline 
+                    value={formData.description} 
+                    onChangeText={(val) => startTransition(() => setFormData({ ...formData, description: val }))} 
+                />
+
+                <CategorySelector
+                    selectedCategory={formData.category}
+                    onSelectCategory={handleCategorySelect}
+                />
+            </View>
+
+            <Text className="text-white font-[Manrope-Bold] text-xl mb-6">Quiz Questions</Text>
+        </View>
+    );
+
+    const renderFooter = () => (
+        <View className="px-6 mb-10">
+            <TouchableOpacity onPress={addQuestion} className="border-2 border-dashed border-indigo-500/30 p-6 rounded-[32px] items-center justify-center mb-10 mt-4">
+                <View className="flex-row items-center">
+                    <PlusCircle size={20} color="#6366f1" />
+                    <Text className="text-indigo-500 font-[Manrope-Bold] ml-2 text-lg">Add Another Question</Text>
+                </View>
+            </TouchableOpacity>
+
+            <GameSettings
+                formData={formData}
+                setFormData={setFormData}
+                addQuestion={addQuestion}
+                removeQuestion={removeQuestion}
+                questionsCount={questions.length}
+            />
+
+            {/* 🟢 BUTTON FIX: isLoading ki jagah createGameMutation.isPending */}
+            <TouchableOpacity 
+                onPress={handleCreateLobby} 
+                disabled={createGameMutation.isPending} 
+                className={`h-16 rounded-3xl flex-row items-center justify-center shadow-xl shadow-indigo-900/40 ${createGameMutation.isPending ? 'bg-indigo-400' : 'bg-indigo-600'}`}
+            >
+                {createGameMutation.isPending ? (
+                    <ActivityIndicator color="white" />
+                ) : (
+                    <>
+                        <Text className="text-white font-[Manrope-Bold] text-lg mr-2">Create Game Lobby</Text>
+                        <ArrowRight size={20} color="white" />
+                    </>
+                )}
+            </TouchableOpacity>
+        </View>
+    );
 
     return (
         <SafeAreaView className="flex-1 bg-[#050B18]">
@@ -196,109 +291,31 @@ export default function CreateQuiz() {
                 <Text className="flex-1 text-center text-white font-[Manrope-Bold] text-lg">Create Quiz</Text>
             </View>
 
-            <ScrollView className="px-6 mt-4" showsVerticalScrollIndicator={false}>
+            <FlatList
+                data={questions}
+                keyExtractor={(item, index) => item.id || index.toString()}
+                ListHeaderComponent={renderHeader}
+                ListFooterComponent={renderFooter}
+                showsVerticalScrollIndicator={false}
+                
+                removeClippedSubviews={true} 
+                initialNumToRender={4}
+                maxToRenderPerBatch={4}
+                windowSize={5}
 
-                {/* 🟢 NAYA: Import Button for Testing */}
-                <TouchableOpacity 
-                    onPress={handleImportQuiz}
-                    className="flex-row items-center justify-center bg-indigo-500/20 border-dashed border-2 border-indigo-500/40 p-4 rounded-2xl mb-6"
-                >
-                    <Download size={20} color="#818CF8" />
-                    <Text className="text-indigo-300 font-[Manrope-Bold] text-base ml-2">
-                        Import Dummy JSON
-                    </Text>
-                </TouchableOpacity>
-
-                {/* Section: Quiz Details with Banner Picker */}
-                <View className="bg-[#111827]/30 border border-gray-800 p-5 rounded-[32px] mb-6">
-                    <View className="flex-row items-center mb-4">
-                        <FileText size={18} color="#6366f1" />
-                        <Text className="text-white font-[Manrope-Bold] ml-2">Quiz Details</Text>
-                    </View>
-
-                    <TouchableOpacity
-                        onPress={pickQuizImage}
-                        className="border-2 border-dashed border-gray-800 h-44 rounded-3xl items-center justify-center mb-6 bg-[#050B18] overflow-hidden"
-                    >
-                        {formData.quizImage ? (
-                            <View className="w-full h-full relative">
-                                <Image source={{ uri: formData.quizImage }} className="w-full h-full" resizeMode="cover" />
-                                <TouchableOpacity
-                                    onPress={() => setFormData({ ...formData, quizImage: null })}
-                                    className="absolute top-2 right-2 bg-black/50 p-1 rounded-full"
-                                >
-                                    <X size={16} color="white" />
-                                </TouchableOpacity>
-                            </View>
-                        ) : (
-                            <>
-                                <View className="bg-indigo-500/10 p-4 rounded-full">
-                                    <ImageIcon size={32} color="#6366f1" />
-                                </View>
-                                <Text className="text-gray-400 font-[Manrope-Medium] mt-3 text-sm">Add Quiz Banner</Text>
-                            </>
-                        )}
-                    </TouchableOpacity>
-
-                    <QuizInput label="Quiz Title" placeholder="Enter Quiz Title" value={formData.title} onChangeText={(val) => setFormData({ ...formData, title: val })} />
-                    <QuizInput label="Description (Optional)" placeholder="What is this quiz about?" multiline value={formData.description} onChangeText={(val) => setFormData({ ...formData, description: val })} />
-
-                    <CategorySelector
-                        selectedCategory={formData.category}
-                        onSelectCategory={handleCategorySelect}
-                    />
-                </View>
-
-                {/* Dynamic Questions List */}
-                <View>
-                    <Text className="text-white font-[Manrope-Bold] text-xl mb-6">Quiz Questions</Text>
-                    {questions.map((q, idx) => (
+                renderItem={({ item, index }) => (
+                    <View className="px-6">
                         <QuestionCard
-                            key={`quiz-q-${idx}`}
-                            index={idx}
-                            questionData={q}
-                            updateQuestion={(data) => updateQuestion(idx, data)}
-                            removeQuestion={() => removeQuestion(idx)}
+                            index={index}
+                            questionData={item}
+                            updateQuestion={(data) => updateQuestion(index, data)}
+                            removeQuestion={() => removeQuestion(index)}
                         />
-                    ))}
-                </View>
-
-                {/* Add Another Question Button */}
-                <TouchableOpacity
-                    onPress={addQuestion}
-                    className="border-2 border-dashed border-indigo-500/30 p-6 rounded-[32px] items-center justify-center mb-10"
-                >
-                    <View className="flex-row items-center">
-                        <PlusCircle size={20} color="#6366f1" />
-                        <Text className="text-indigo-500 font-[Manrope-Bold] ml-2 text-lg">Add Another Question</Text>
                     </View>
-                </TouchableOpacity>
+                )}
+            />
 
-                <GameSettings
-                    formData={formData}
-                    setFormData={setFormData}
-                    addQuestion={addQuestion}
-                    removeQuestion={removeQuestion}
-                    questionsCount={questions.length}
-                />
-
-                <TouchableOpacity
-                    onPress={handleCreateLobby}
-                    disabled={isLoading}
-                    className={`h-16 rounded-3xl flex-row items-center justify-center mb-10 shadow-xl shadow-indigo-900/40 ${isLoading ? 'bg-indigo-400' : 'bg-indigo-600'}`}
-                >
-                    {isLoading ? (
-                        <ActivityIndicator color="white" />
-                    ) : (
-                        <>
-                            <Text className="text-white font-[Manrope-Bold] text-lg mr-2">Create Game Lobby</Text>
-                            <ArrowRight size={20} color="white" />
-                        </>
-                    )}
-                </TouchableOpacity>
-
-            </ScrollView>
-            <CustomAlert 
+            <CustomAlert
                 visible={alertConfig.visible}
                 title={alertConfig.title}
                 message={alertConfig.message}

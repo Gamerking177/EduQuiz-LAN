@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, Gamepad2, User, Key, ArrowRight } from 'lucide-react-native';
+// 🟢 CheckCircle2 import kiya Kahoot UX ke liye
+import { ChevronLeft, Gamepad2, User, Key, ArrowRight, CheckCircle2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Network from 'expo-network';
 
-// 🟢 Naye imports
-import { joinGame } from '../utils/api';
+// 🟢 NAYA: React Query aur getGameInfo API import ki
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { joinGame, getGameInfo } from '../utils/api'; 
 import socketService from '../utils/socket';
 import useGameStore from '../store/useGameStore';
 import CustomAlert from '../components/CustomAlert';
@@ -18,9 +20,6 @@ export default function JoinGame() {
     const [ipAddress, setIpAddress] = useState('0.0.0.0');
     const [isConnected, setIsConnected] = useState(false);
     const [alertConfig, setAlertConfig] = useState({ visible: false, title: '', message: '' });
-
-    // 🟢 Loading state for API
-    const [isLoading, setIsLoading] = useState(false);
 
     // 🟢 Zustand Actions
     const setRoomCodeStore = useGameStore((state) => state.setRoomCode);
@@ -42,50 +41,68 @@ export default function JoinGame() {
         })();
     }, []);
 
-    const handleJoin = async () => {
+    const showAlert = (title, message) => {
+        setAlertConfig({ visible: true, title, message });
+    };
+
+    // ==========================================
+    // 🟢 1. KAHOOT MAGIC: Auto-Check Room (useQuery)
+    // ==========================================
+    const { data: roomInfo, isFetching: isCheckingRoom, isError: isRoomError, isSuccess: isRoomFound } = useQuery({
+        queryKey: ['checkRoom', roomCode],
+        queryFn: () => getGameInfo(roomCode),
+        enabled: roomCode.length === 6, // 🟢 JADUU: API sirf tab hit hogi jab 6 letters pure honge!
+        retry: false, // Galat code pe baar-baar retry nahi marna
+    });
+
+    // ==========================================
+    // 🟢 2. JOIN GAME LOGIC (useMutation)
+    // ==========================================
+    const joinMutation = useMutation({
+        mutationFn: joinGame,
+        onSuccess: (response) => {
+            if (response.success) {
+                setRoomCodeStore(roomCode);
+                setPlayerNameStore(nickname);
+                setIsHostStore(false); // Ye player hai
+
+                socketService.connect();
+                socketService.joinRoom(roomCode, nickname, ipAddress);
+
+                // 🟢 THE PRO FIX (No Fooling this time): 'active' check!
+                const gameStatus = response.data?.status || response.data?.gameStatus;
+
+                if (gameStatus === 'active') {
+                    console.log("🚀 Late Joiner detected! Sending directly to battlefield.");
+                    router.push('/question-panel'); 
+                } else {
+                    console.log("⏳ Game not started yet. Sending to waiting area.");
+                    router.push('/waiting-area');
+                }
+
+            } else {
+                showAlert("Join Failed", response.message || "Room code galat hai ya game start ho chuka hai.");
+            }
+        },
+        onError: (error) => {
+            showAlert("Server Error", error.response?.data?.message || "Server issue! Render ko wake up hone do.");
+        }
+    });
+
+    const handleJoin = () => {
         if (!roomCode || !nickname) {
             showAlert("Details Missing", "Bhai, Room Code aur Nickname dono zaruri hain!");
             return;
         }
 
-        try {
-            setIsLoading(true);
-
-            // 🟢 1. Call Backend Join API
-            const joinData = {
-                roomCode: roomCode,
-                playerName: nickname,
-                deviceId: ipAddress // Ya koi unique ID generate karke bhej sakte ho
-            };
-
-            const response = await joinGame(joinData);
-
-            if (response.success) {
-                // 🟢 2. Update Zustand Store
-                setRoomCodeStore(roomCode);
-                setPlayerNameStore(nickname);
-                setIsHostStore(false); // Ye player hai, host nahi
-
-                // 🟢 3. Socket Connection & Join Event
-                socketService.connect();
-                socketService.joinRoom(roomCode, nickname, ipAddress);
-
-                // 🟢 4. Navigate to Waiting Area
-                router.push('/waiting-area');
-            } else {
-                showAlert("Join Failed", response.message || "Room code galat hai ya game start ho chuka hai.");
-            }
-
-        } catch (error) {
-            showAlert("Server Error", error.response?.data?.message || "Server issue! Render ko wake up hone do.");
-        } finally {
-            setIsLoading(false);
-        }
+        // 🟢 Seedha Mutate call karo
+        joinMutation.mutate({
+            roomCode: roomCode,
+            playerName: nickname,
+            deviceId: ipAddress 
+        });
     };
 
-    const showAlert = (title, message) => {
-        setAlertConfig({ visible: true, title, message });
-    };
 
     return (
         <SafeAreaView className="flex-1 bg-[#050B18]">
@@ -109,7 +126,7 @@ export default function JoinGame() {
                     {/* Room Code Input */}
                     <View className="w-full mb-6">
                         <Text className="text-gray-400 font-[Manrope-Bold] text-[10px] uppercase tracking-widest mb-2 ml-1">Room Code</Text>
-                        <View className="flex-row items-center bg-[#050B18] border border-gray-800 rounded-2xl px-4 h-16">
+                        <View className={`flex-row items-center bg-[#050B18] border rounded-2xl px-4 h-16 ${roomCode.length === 6 && isRoomFound ? 'border-green-500/50' : 'border-gray-800'}`}>
                             <TextInput
                                 placeholder="A 1 B 2 C 3"
                                 placeholderTextColor="#374151"
@@ -119,10 +136,33 @@ export default function JoinGame() {
                                 autoCapitalize="characters"
                                 autoCorrect={false}
                                 maxLength={6}
-                                editable={!isLoading}
+                                editable={!joinMutation.isPending}
                             />
-                            <Key size={20} color="#4B5563" />
+                            {isCheckingRoom ? (
+                                <ActivityIndicator size="small" color="#6366f1" />
+                            ) : (
+                                <Key size={20} color="#4B5563" />
+                            )}
                         </View>
+                        
+                        {/* 🟢 KAHOOT UX: Feedback below input */}
+                        {roomCode.length === 6 && (
+                            <View className="mt-2 ml-1 flex-row items-center justify-center">
+                                {isRoomFound && roomInfo?.success && (
+                                    <>
+                                        <CheckCircle2 size={14} color="#22c55e" className="mr-1" />
+                                        <Text className="text-green-500 font-[Manrope-SemiBold] text-xs">
+                                            Room Found: {roomInfo.data?.settings?.title || roomInfo.data?.title || 'Ready to join!'}
+                                        </Text>
+                                    </>
+                                )}
+                                {isRoomError && (
+                                    <Text className="text-red-500 font-[Manrope-SemiBold] text-xs">
+                                        Room not found. Check code.
+                                    </Text>
+                                )}
+                            </View>
+                        )}
                     </View>
 
                     {/* Nickname Input */}
@@ -136,18 +176,18 @@ export default function JoinGame() {
                                 className="flex-1 text-white font-[Manrope-SemiBold] text-lg"
                                 value={nickname}
                                 onChangeText={setNickname}
-                                editable={!isLoading}
+                                editable={!joinMutation.isPending}
                             />
                         </View>
                     </View>
 
-                    {/* 🟢 Join Button with Loading State */}
+                    {/* 🟢 Join Button with React Query Pending State */}
                     <TouchableOpacity
                         onPress={handleJoin}
-                        disabled={isLoading}
-                        className={`w-full h-16 rounded-2xl flex-row items-center justify-center ${isLoading ? 'bg-indigo-400' : 'bg-indigo-600'}`}
+                        disabled={joinMutation.isPending || isCheckingRoom}
+                        className={`w-full h-16 rounded-2xl flex-row items-center justify-center ${(joinMutation.isPending || isCheckingRoom) ? 'bg-indigo-400' : 'bg-indigo-600'}`}
                     >
-                        {isLoading ? (
+                        {joinMutation.isPending ? (
                             <ActivityIndicator color="white" />
                         ) : (
                             <>
@@ -171,7 +211,7 @@ export default function JoinGame() {
                     </Text>
                 </View>
             </KeyboardAvoidingView>
-            {/* 🟢 Alert Modal */}
+            
             <CustomAlert
                 visible={alertConfig.visible}
                 title={alertConfig.title}

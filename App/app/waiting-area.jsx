@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { View, Text, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native'; // 🟢 FlatList import kiya
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Users, Clock, LogOut, ShieldCheck, Play } from 'lucide-react-native';
@@ -38,7 +38,6 @@ export default function WaitingArea() {
     useEffect(() => {
         const socket = socketService.connect();
 
-        // 🟢 FIX: Trigger Join tabhi chalega jab roomCode defined hoga
         const triggerJoin = () => {
             if (!roomCode) {
                 console.warn("⚠️ Room Code is undefined! Cannot join.");
@@ -66,17 +65,14 @@ export default function WaitingArea() {
         });
 
         socket.on("update_leaderboard", (leaderboardData) => {
-            // 💡 UNIQUE FILTER: Same naam wale players ko ek hi baar dikhao
             const uniquePlayers = leaderboardData.reduce((acc, current) => {
                 const x = acc.find(item => item.name === current.name);
                 if (!x) {
                     return acc.concat([current]);
                 } else {
-                    // Agar purana socket ID hai par naam same hai, toh naye data se update kar do
                     return acc.map(item => item.name === current.name ? current : item);
                 }
             }, []);
-
             setPlayers(uniquePlayers);
         });
 
@@ -111,7 +107,6 @@ export default function WaitingArea() {
         } else {
             socketService.leaveRoom(roomCode, safePlayerName);
         }
-
         clearStore();
         router.replace('/home');
     };
@@ -124,7 +119,8 @@ export default function WaitingArea() {
         socketService.startGame(roomCode);
     };
 
-    const allPlayers = (() => {
+    // 🟢 OPTIMIZATION 1: useMemo lagaya taaki har socket tick pe calculation na ho
+    const allPlayers = useMemo(() => {
         const otherPlayers = players.filter(p => p.name !== safePlayerName);
         const myCard = { name: safePlayerName, isMe: true, isRealHost: isHost };
 
@@ -134,7 +130,32 @@ export default function WaitingArea() {
         }
 
         return [myCard, ...otherPlayers];
-    })();
+    }, [players, safePlayerName, isHost]);
+
+    // 🟢 OPTIMIZATION 2: FlatList ka render function alag kar diya
+    const renderPlayerCard = ({ item: player }) => {
+        let badgeText = "Player";
+        if (player.isMe && player.isRealHost) badgeText = "You (Host)";
+        else if (player.isRealHost) badgeText = "Host";
+        else if (player.isMe) badgeText = "You";
+
+        return (
+            // w-[48%] aur columnWrapperStyle grid maintain karenge
+            <View className={`w-[48%] mb-4 p-4 rounded-3xl border ${player.isMe ? 'bg-indigo-600 border-indigo-400' : 'bg-[#111827]/50 border-gray-800'}`}>
+                <View className="w-10 h-10 bg-white/10 rounded-full items-center justify-center mb-2">
+                    <Text className="text-white font-[Manrope-Bold]">
+                        {player.name ? player.name.charAt(0).toUpperCase() : "A"}
+                    </Text>
+                </View>
+                <Text className="text-white font-[Manrope-Bold]" numberOfLines={1}>
+                    {player.name}
+                </Text>
+                <Text className="text-gray-400 text-[10px] font-[Manrope-Medium]">
+                    {badgeText}
+                </Text>
+            </View>
+        );
+    };
 
     return (
         <SafeAreaView className="flex-1 bg-[#050B18] px-6">
@@ -143,7 +164,6 @@ export default function WaitingArea() {
                     <Text className="text-indigo-400 font-[Manrope-Bold] text-[10px] uppercase tracking-[4px]">Join Code</Text>
                 </View>
                 <View className="flex-row items-center">
-                    {/* 🟢 FIX: Yahan sure kiya ki roomCode agar string hai tabhi format hoga varna dashed line. */}
                     <Text className="text-white font-[Manrope-Bold] text-5xl tracking-[8px]">
                         {typeof roomCode === 'string' && roomCode.length > 0 ? roomCode.split('').join(' ') : "------"}
                     </Text>
@@ -181,35 +201,17 @@ export default function WaitingArea() {
                     </Text>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-                    <View className="flex-row flex-wrap justify-between">
-                        {allPlayers.map((player, index) => {
-                            let badgeText = "Player";
-                            if (player.isMe && player.isRealHost) badgeText = "You (Host)";
-                            else if (player.isRealHost) badgeText = "Host";
-                            else if (player.isMe) badgeText = "You";
-
-                            return (
-                                <View
-                                    key={`player-${index}`}
-                                    className={`w-[48%] mb-4 p-4 rounded-3xl border ${player.isMe ? 'bg-indigo-600 border-indigo-400' : 'bg-[#111827]/50 border-gray-800'}`}
-                                >
-                                    <View className="w-10 h-10 bg-white/10 rounded-full items-center justify-center mb-2">
-                                        <Text className="text-white font-[Manrope-Bold]">
-                                            {player.name ? player.name.charAt(0).toUpperCase() : "A"}
-                                        </Text>
-                                    </View>
-                                    <Text className="text-white font-[Manrope-Bold]" numberOfLines={1}>
-                                        {player.name}
-                                    </Text>
-                                    <Text className="text-gray-400 text-[10px] font-[Manrope-Medium]">
-                                        {badgeText}
-                                    </Text>
-                                </View>
-                            )
-                        })}
-                    </View>
-                </ScrollView>
+                {/* 🟢 OPTIMIZATION 3: ScrollView replaced with FlatList */}
+                <FlatList 
+                    data={allPlayers}
+                    keyExtractor={(item, index) => `${item.name}-${index}`}
+                    renderItem={renderPlayerCard}
+                    numColumns={2} // Grid layout ke liye
+                    columnWrapperStyle={{ justifyContent: 'space-between' }} // Cards ke beech space
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ paddingBottom: 20 }}
+                    removeClippedSubviews={true} // Off-screen items memory se hatayega
+                />
             </View>
 
             <View className="py-6 border-t border-gray-900">

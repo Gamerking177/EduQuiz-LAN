@@ -3,6 +3,12 @@ import { View, Text, Switch, TouchableOpacity } from 'react-native';
 import { Settings, Wifi, WifiOff } from 'lucide-react-native';
 import CounterInput from './CounterInput';
 import TimeStepper from './TimeStepper';
+import SegmentedToggle from './SegmentedToggle';
+
+const QUESTION_ORDER_OPTIONS = [
+    { id: "sequential", label: "Sequential" },
+    { id: "random", label: "Random" }
+]
 
 const GameSettings = ({ formData, setFormData }) => {
 
@@ -14,7 +20,7 @@ const GameSettings = ({ formData, setFormData }) => {
     return (
         <View
             className="bg-[#111827]/30 border border-gray-800 p-5 rounded-[32px] mb-10"
-            style={{ borderStyle: 'solid' }} 
+            style={{ borderStyle: 'solid' }}
         >
             <View className="flex-row items-center mb-6">
                 <Settings size={18} color="#6366f1" />
@@ -28,31 +34,15 @@ const GameSettings = ({ formData, setFormData }) => {
                 value={formData.maxPlayers}
                 onIncrement={() => updateField('maxPlayers', formData.maxPlayers + 1)}
                 onDecrement={() => updateField('maxPlayers', Math.max(1, formData.maxPlayers - 1))}
+                onChangeText={(val) => updateField('maxPlayers', val)}
             />
 
-            {/* Question Order */}
-            <View className="mb-6 px-2">
-                <Text className="text-gray-400 font-[Manrope-Bold] text-[10px] uppercase tracking-widest mb-3">
-                    Question Order
-                </Text>
-                <View className="flex-row bg-[#050B18] p-1.5 rounded-2xl border border-gray-800">
-                    <TouchableOpacity
-                        onPress={() => updateField('questionOrder', 'Sequential')}
-                        activeOpacity={0.7}
-                        className={`flex-1 py-3 rounded-xl items-center ${formData.questionOrder === 'Sequential' ? 'bg-indigo-600' : ''}`}
-                    >
-                        <Text className={`font-[Manrope-Bold] text-xs ${formData.questionOrder === 'Sequential' ? 'text-white' : 'text-gray-500'}`}>Sequential</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        onPress={() => updateField('questionOrder', 'Random')}
-                        activeOpacity={0.7}
-                        className={`flex-1 py-3 rounded-xl items-center ${formData.questionOrder === 'Random' ? 'bg-indigo-600' : ''}`}
-                    >
-                        <Text className={`font-[Manrope-Bold] text-xs ${formData.questionOrder === 'Random' ? 'text-white' : 'text-gray-500'}`}>Random</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
+            <SegmentedToggle
+                label="Question Order"
+                options={QUESTION_ORDER_OPTIONS}
+                selectedValue={formData.questionOrder}
+                onSelect={(val) => updateField('questionOrder', val)}
+            />
 
             {/* Time Stepper */}
             <TimeStepper
@@ -74,7 +64,7 @@ const GameSettings = ({ formData, setFormData }) => {
                     value={formData.restrictToWifi}
                     onValueChange={(val) => updateField('restrictToWifi', val)}
                     trackColor={{ false: '#1f2937', true: '#6366f1' }}
-                    thumbColor="#f4f3f4" 
+                    thumbColor="#f4f3f4"
                 />
             </View>
 
