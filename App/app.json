@@ -67,7 +67,8 @@
         {
           "iCloudContainerEnvironment": "Production"
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "extra": {
       "router": {},

@@ -56,12 +56,15 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="register" />
         <Stack.Screen name="home" />
         <Stack.Screen name="create-quiz" />
         <Stack.Screen name="join-game" />
         <Stack.Screen name="waiting-area" />
         <Stack.Screen name="question-panel" />
         <Stack.Screen name="host-live-leaderboard" />
+        <Stack.Screen name="host-answer-key" />
         <Stack.Screen name="player-results" />
       </Stack>
     </QueryClientProvider>

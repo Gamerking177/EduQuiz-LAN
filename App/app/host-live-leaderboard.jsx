@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { StopCircle, Home } from 'lucide-react-native';
+import { StopCircle, ListChecks } from 'lucide-react-native';
 
 // 🟢 Tere Custom Store aur Socket Imports
 import useGameStore from '../store/useGameStore'; // Path check kar lena
@@ -135,13 +135,14 @@ export default function HostLiveLeaderboard() {
                 </ScrollView>
 
                 {/* Bottom Fixed Buttons */}
+                {/* 🟢 Bottom Fixed Buttons */}
                 <View className="absolute bottom-0 left-0 right-0 px-6 pt-4 pb-8 bg-[#020617]/95">
                     <LinearGradient
                         colors={['transparent', '#020617']}
                         className="absolute -top-10 left-0 right-0 h-10"
                     />
 
-                    {/* Yahan hum sirf setModalVisible(true) call karenge */}
+                    {/* End Game Button */}
                     <TouchableOpacity
                         onPress={() => setModalVisible(true)}
                         disabled={isEnding}
@@ -152,15 +153,16 @@ export default function HostLiveLeaderboard() {
                         </View>
                         <Text className="text-white font-[Manrope-Bold] text-xl">End Game</Text>
                     </TouchableOpacity>
+
+                    {/* 🟢 NAYA BUTTON: Answer Key */}
                     <TouchableOpacity
-                        // 🟢 FIX: Back dabane par bhi pehle confirm karo ki kya sacchi game end karna hai?
-                        onPress={() => setModalVisible(true)}
+                        onPress={() => router.push('/host-answer-key')}
                         className="bg-transparent border-2 border-[#5B4CFF]/60 flex-row items-center justify-center py-[18px] rounded-[16px]"
                     >
                         <View className="mr-3">
-                            <Home color="white" size={24} />
+                            <ListChecks color="white" size={24} />
                         </View>
-                        <Text className="text-white font-[Manrope-Bold] text-xl">Back to Home</Text>
+                        <Text className="text-white font-[Manrope-Bold] text-xl">View Answer Key</Text>
                     </TouchableOpacity>
                 </View>
                 <EndGameModal

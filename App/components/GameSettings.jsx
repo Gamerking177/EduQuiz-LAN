@@ -1,9 +1,9 @@
 import React, { memo, useCallback } from 'react';
-import { View, Text, Switch, TouchableOpacity } from 'react-native';
-import { Settings, Wifi, WifiOff } from 'lucide-react-native';
+import { View, Text, Switch, TextInput } from 'react-native';
+import { Settings, Wifi, WifiOff, Clock } from 'lucide-react-native'; // 🟢 FIX: Clock icon import kiya
 import CounterInput from './CounterInput';
-import TimeStepper from './TimeStepper';
 import SegmentedToggle from './SegmentedToggle';
+// 🟢 FIX: TimeStepper hata diya
 
 const QUESTION_ORDER_OPTIONS = [
     { id: "sequential", label: "Sequential" },
@@ -27,7 +27,7 @@ const GameSettings = ({ formData, setFormData }) => {
                 <Text className="text-white font-[Manrope-Bold] ml-2">Game Settings</Text>
             </View>
 
-            {/* Max Players (Question count hata diya) */}
+            {/* Max Players */}
             <CounterInput
                 label="Max Player"
                 subLabel="Total players in session"
@@ -44,11 +44,32 @@ const GameSettings = ({ formData, setFormData }) => {
                 onSelect={(val) => updateField('questionOrder', val)}
             />
 
-            {/* Time Stepper */}
-            <TimeStepper
-                selectedTime={formData.timePerQuestion}
-                onTimeChange={(val) => updateField('timePerQuestion', val)}
-            />
+            {/* 🟢 NAYA FIX: Custom Total Time Input */}
+            <View className="flex-row items-center justify-between mb-6 p-4 bg-[#050B18] rounded-2xl border border-gray-800">
+                <View className="flex-row items-center flex-1 mr-4">
+                    <View className="p-2 rounded-lg bg-indigo-500/20">
+                        <Clock size={20} color="#6366f1" />
+                    </View>
+                    <View className="ml-3">
+                        <Text className="text-white font-[Manrope-SemiBold]">Total Time (Mins)</Text>
+                        <Text className="text-gray-500 text-xs">For the entire quiz</Text>
+                    </View>
+                </View>
+                {/* User Input field for minutes */}
+                <TextInput
+                    className="text-white font-[Manrope-Bold] text-lg bg-[#111827] px-4 py-2 rounded-xl border border-gray-700 text-center w-20"
+                    keyboardType="numeric"
+                    placeholder="15"
+                    placeholderTextColor="#4B5563"
+                    value={String(formData.totalTimeLimit || '')}
+                    onChangeText={(val) => {
+                        // Sirf numbers allow karega
+                        const numericValue = val.replace(/[^0-9]/g, '');
+                        updateField('totalTimeLimit', numericValue);
+                    }}
+                    maxLength={3} // Max 999 mins
+                />
+            </View>
 
             {/* Restrict to WiFi */}
             <View className="flex-row items-center justify-between mb-6 p-4 bg-[#050B18] rounded-2xl border border-gray-800">

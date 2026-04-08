@@ -1,47 +1,38 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, TextInput } from 'react-native';
-import { Plus, Minus } from 'lucide-react-native';
+import { View, Text, TextInput } from 'react-native';
 
-// 🟢 NAYA: onChangeText prop add kiya gaya hai
-const CounterInput = ({ label, value, onIncrement, onDecrement, onChangeText, subLabel }) => {
+const CounterInput = ({ label, value, onChangeText, subLabel }) => {
   
-  // Input ko handle karne ke liye function (sirf numbers allow karega)
   const handleTextChange = (text) => {
-    const numericValue = parseInt(text.replace(/[^0-9]/g, ''), 10);
+    // 🟢 Sirf numbers rakho
+    const numericValue = text.replace(/[^0-9]/g, '');
     
-    if (!isNaN(numericValue)) {
-      if (onChangeText) onChangeText(numericValue);
-    } else if (text === '') {
-      if (onChangeText) onChangeText(0); // Agar user sab delete kar de toh 0 set kar do
+    // Agar user mita de toh empty string bhejo taaki wo type kar sake
+    if (onChangeText) {
+      onChangeText(numericValue === '' ? '' : parseInt(numericValue, 10));
     }
   };
 
   return (
-    <View className="flex-row items-center justify-between bg-[#111827] p-4 rounded-2xl border border-gray-800 mb-4">
-      <View>
-        <Text className="text-white font-[Manrope-SemiBold]">{label}</Text>
-        {subLabel && <Text className="text-gray-500 text-[10px]">{subLabel}</Text>}
+    <View className="flex-row items-center justify-between mb-6 p-4 bg-[#050B18] rounded-2xl border border-gray-800">
+      
+      <View className="flex-1 mr-4">
+        <Text className="text-white font-[Manrope-SemiBold] text-base">{label}</Text>
+        {subLabel && <Text className="text-gray-400 text-[10px] mt-1 uppercase tracking-tighter">{subLabel}</Text>}
       </View>
-      <View className="flex-row items-center bg-[#050B18] rounded-xl border border-gray-700">
-        
-        <TouchableOpacity onPress={onDecrement} className="p-3">
-          <Minus size={16} color="white" />
-        </TouchableOpacity>
-        
-        {/* 🟢 NAYA: Text ki jagah TextInput laga diya */}
+
+      <View className="bg-[#111827] border border-gray-700 rounded-xl w-24 h-12 justify-center">
         <TextInput 
-          className="text-white font-[Manrope-Bold] px-4 text-center min-w-[50px]"
-          value={String(value)} 
+          className="text-white font-[Manrope-Bold] text-lg text-center h-full"
+          value={value === 0 || value === '0' ? '' : String(value)} // 🟢 Empty string handle kiya
           onChangeText={handleTextChange}
           keyboardType="numeric"
-          maxLength={3} // Max 999 players allowed
-          selectTextOnFocus={true} // Tap karte hi purana number select ho jayega overtype karne ke liye
+          placeholder="0"
+          placeholderTextColor="#4B5563"
+          maxLength={3}
+          cursorColor="#8B5CF6"
+          selectTextOnFocus={true} 
         />
-        
-        <TouchableOpacity onPress={onIncrement} className="p-3 bg-indigo-600 rounded-r-xl">
-          <Plus size={16} color="white" />
-        </TouchableOpacity>
-        
       </View>
     </View>
   );

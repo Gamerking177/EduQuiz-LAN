@@ -55,6 +55,11 @@ class SocketService {
     this.emit("start_game", { roomCode }); 
   }
 
+  // 🟢 EXAM MODE SUBMIT (Ye add karna zaroori hai)
+  submitExam(roomCode, answersMap) {
+    this.emit("submit_exam", { roomCode, answersMap });
+  }
+
   submitAnswer(roomCode, answer) {
     this.emit("submit_answer", { roomCode, answer });
   }
@@ -70,6 +75,11 @@ class SocketService {
   // 🟢 NAYA FIX 3: Host jab running quiz ko jabardasti stop karega
   endQuizSession(roomCode) {
     this.emit("end_quiz_session", { roomCode });
+  }
+
+  // 🟢 NAYA FIX: Screen load hone par paper mangne ke liye
+  fetchExamPaper(roomCode) {
+    this.emit("fetch_exam_paper", { roomCode });
   }
 
   emit(event, data) {

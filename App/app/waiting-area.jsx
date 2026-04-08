@@ -89,7 +89,15 @@ export default function WaitingArea() {
         socketService.on("game_started", () => {
             console.log("🚀 [Socket] Game Started!");
             setIsStarting(true);
-            setTimeout(() => { router.push('/question-panel'); }, 1500);
+            
+            setTimeout(() => { 
+                // 🟢 THE MAGIC FIX: Host aur Player ka raasta yahi se alag kar do
+                if (isHost) {
+                    router.replace('/host-live-leaderboard'); // Host seedha leaderboard jayega
+                } else {
+                    router.replace('/question-panel'); // Player paper dene jayega
+                }
+            }, 1500); // 1.5 second ka mast animation dikhne ke baad jayega
         });
 
         return () => {
