@@ -4,11 +4,14 @@ const controller = require("./game.controller");
 const validate = require("../../middlewares/validate.middleware");
 const { createGameSchema } = require("./game.validator");
 
-// Standard Routes
-router.post("/create", validate(createGameSchema), controller.createHost);
-router.post("/join", controller.validateJoin); // <-- NEW ROUTE
+// 🟢 NAYA: Auth middleware import kiya
+const { protect } = require("../../middlewares/auth.middleware"); 
+
+// Standard Routes (Create par protect laga diya)
+router.post("/create", protect, validate(createGameSchema), controller.createHost);
+router.post("/join", protect, controller.validateJoin); 
 router.get("/:roomCode", controller.getGameByCode);
 router.get("/:gameId/leaderboard", controller.getLeaderboard);
-router.post("/end", controller.endGame)
+router.post("/end", controller.endGame);
 
 module.exports = router;

@@ -22,16 +22,13 @@ const questionSchema = Joi.object({
 
   correctAnswer: Joi.string().required(),
 
-  timeLimit: Joi.number()
-    .valid(15, 30, 60)
-    .default(30),
+  // 🟢 NAYA: Exam ke baad reason dikhane ke liye (Optional)
+  explanation: Joi.string().allow("").optional(),
 
   difficulty: Joi.string()
     .valid("easy", "medium", "hard")
     .default("medium")
     
-  // 🔥 categories block removed to match Mongoose schema!
-
 }).custom((value, helpers) => {
   if (value.type === "MCQ") {
     if (!value.options.includes(value.correctAnswer)) {
@@ -46,8 +43,10 @@ const createGameSchema = Joi.object({
     title: Joi.string().min(3).max(50).required(),
     category: Joi.string().default("General"),
 
-    timePerQuestion: Joi.number()
-      .valid(15, 30, 60)
+    // 🟢 NAYA: timePerQuestion hatakar exam mode wala totalDuration (minutes mein)
+    totalDuration: Joi.number()
+      .min(1) // Kam se kam 1 minute
+      .max(180) // Maximum 3 ghante (180 mins)
       .default(30),
 
     allowLateJoin: Joi.boolean().default(false),
