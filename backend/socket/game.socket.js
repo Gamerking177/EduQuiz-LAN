@@ -183,15 +183,32 @@ module.exports = (io, socket) => {
 };
 
 // --- SMART LEADERBOARD HELPER ---
+// --- SMART LEADERBOARD HELPER ---
 async function sendLiveLeaderboard(io, roomCode, gameId, totalQs) {
     const players = await Player.find({ gameId }).select("name score answeredQuestions socketId");
     const room = io.sockets.adapter.rooms.get(roomCode);
     const activeSocketIds = room ? Array.from(room) : [];
 
+    // Filter active and finished players
     const validPlayers = players.filter(p => activeSocketIds.includes(p.socketId) || p.answeredQuestions.length >= totalQs);
+    
+    // Sort by high score
     validPlayers.sort((a, b) => b.score - a.score);
 
-    const leaderboardData = validPlayers.map((p) => ({
+    // 🟢 THE FIX: Duplicates ko hatao taaki Frontend React crash na ho!
+    const uniquePlayers = [];
+    const seenNames = new Set();
+    
+    for (const p of validPlayers) {
+        // Agar ye naam pehle nahi dekha, toh hi list mein daalo
+        if (!seenNames.has(p.name)) {
+            seenNames.add(p.name);
+            uniquePlayers.push(p);
+        }
+    }
+
+    // Prepare final data
+    const leaderboardData = uniquePlayers.map((p) => ({
         id: p.socketId,
         name: p.name,
         correct: Math.floor(p.score / 10),
